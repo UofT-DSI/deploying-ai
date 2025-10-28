@@ -8,13 +8,7 @@ from utils.logger import get_logger
 
 _logs = get_logger(__name__)
 
-from langchain.chat_models import init_chat_model
-
 load_dotenv('.secrets')
-
-if not os.environ.get("OPENAI_API_KEY"):
-    raise ValueError("Missing OPENAI_API_KEY environment variable")
-
 
 chat = gr.ChatInterface(
     fn=horoscope_chat,
