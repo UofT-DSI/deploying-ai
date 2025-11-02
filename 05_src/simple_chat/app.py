@@ -14,12 +14,13 @@ if not os.environ.get("OPENAI_API_KEY"):
 llm = init_chat_model("gpt-4o-mini", model_provider="openai")
 
 
-def simple_chat(message: str, history: list[list[str]]) -> str:
+def simple_chat(message: str, history: list[dict]) -> str:
     langchain_messages = []
-    for user_msg, assist_msg in history:
-        langchain_messages.append(HumanMessage(content=user_msg))
-        langchain_messages.append(AIMessage(content=assist_msg))
-
+    for msg in history:
+        if msg['role'] == 'user':
+            langchain_messages.append(HumanMessage(content=msg['content']))
+        elif msg['role'] == 'assistant':
+            langchain_messages.append(AIMessage(content=msg['content']))
     langchain_messages.append(HumanMessage(content=message))
 
     response = llm.invoke(langchain_messages)

@@ -110,12 +110,12 @@ Participants are encouraged to engage actively during the learning module. They 
 |Live| Oct. 29 | Retrieval Augmented Generation |
 |Live| Oct. 30 | Tools and Agents |
 |Work| Oct. 31 | Work Period |
-|Deadline| Nov. 2| Assignment 1 Due |
+|Deadline| Nov. 3 (@3pm)| Assignment 1 Due |
 |Live| Nov. 4  | Fine Tuning |
 |Live| Nov. 5  | Dataset Engineering |
 |Live| Nov. 6  | Optimization |
 |Work| Nov. 7  | Work Period   |
-|Deadline| Nov. 9 | Assignment 2 Due |
+|Deadline| Nov. 10 (@3pm)| Assignment 2 Due |
 
 ### Requirements
 * Participants are not expected to have any coding experience; the learning content has been designed for beginners.
