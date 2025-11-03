@@ -27,3 +27,9 @@ deploying-ai-env
 *.jsonl
 *.htm
 *.txt
+.venv310/
+**/.ipynb_checkpoints/
+02_activities/outputs/
+05_src/artifacts/
+05_src/documents/*.zip
+assignment_1_draft.ipynb
