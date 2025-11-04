@@ -204,6 +204,39 @@ $ echo "Data Sciences Institute"
 
 ---
 
+## Transfer Learning and Fine Tuning
+
++ In many applications, one cannot access large amounts of labelled text data to train a model.
++ Transfer learning allows to apply the information learned from one task to another.
++ ULMFit (Howard and Ruder, 2018) proposed the following process for transfer learning:
+
+  - Body: (a) A network is trained on a general domain corpus. The weights of the body learn broad features of the source domain. (b) The full LM is fine-tuned on target task data using discriminative fine-tuning and slanted triangular learning rates (STLR).
+  - Head: (c) A classifier trained for a specific task. The classifier is fine-tuned on the target task using gradual unfreezing, discriminative fine-tuning and STLR.
+
+---
+
+ 
+![h:450px center](./images/02_ulmfit.png)
+
+---
+
+## LoRA: Low-Rank Adaptation
+
+
+
++ Fundamental observation: fine-tuning a dense layer only adds a low-rank weight matrix (delta-W) to the original weight matrix (W). 
++ Fine-tuning can be simplified to train the low-rank weight matrix delta-W, which has the same number of weights as the original weight matrix W.
++ The low-rank matrix delta-W can be expressed as the product of two low-rank matrices, A and B.
++ Instead of training the full *Body* and adding a *Head*, LoRA requires training a small delta-W with fewer parameters. 
++ Consequently, LoRA is faster to train and requires less memory.
+
+---
+
+![center](./images/07_lora_training.png)
+
+
+---
+
 ## Adapter-Based Methods
 
 - Adapters are small modules inserted into transformer layers.
@@ -237,4 +270,6 @@ $ echo "Data Sciences Institute"
 
 ## References
 
-- Huyen, Chip. Designing machine learning systems. O'Reilly Media, Inc., 2022 
++ Howard, Jeremy, and Sebastian Ruder. "Universal language model fine-tuning for text classification." arXiv preprint arXiv:1801.06146 (2018). 
++ Hu, Edward J., et al. "Lora: Low-rank adaptation of large language models." arXiv preprint arXiv:2106.09685 (2021).bridging-the-gap-enhanced-neural-network-techniques-for-ai/).
++ Huyen, Chip. Designing machine learning systems. O'Reilly Media, Inc., 2022.
