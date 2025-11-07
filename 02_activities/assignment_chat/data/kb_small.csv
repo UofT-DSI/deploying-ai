@@ -1,0 +1,4 @@
+id,title,text
+1,AI Guardrails,Prompt privacy, topic blocking, and safety rules for assistants.
+2,Semantic Search,Use embeddings to retrieve and rank relevant passages from a KB.
+3,Function Calling,Let the model call small tools like calculator and unit converter.
