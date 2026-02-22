@@ -1,0 +1,9 @@
+{
+  "Author": "Aditya Challapally, Chris Pease, Ramesh Raskar, Pradyumna Chari",
+  "Title": "The GenAI Divide: State of AI in Business 2025",
+  "Relevance": "The document provides critical insights into the current landscape of AI adoption within enterprises, highlighting the disparity between high investment and low transformational impact, which is imperative for AI professionals to understand in order to design effective strategies and tools.",
+  "Summary": "The report outlines the findings from extensive research into AI implementation across various industries. It emphasizes the 'GenAI Divide,' where high adoption rates do not translate into meaningful transformation; only 5% of organizations successfully integrate AI to generate significant value. Key factors contributing to this divide include the nature of AI tools, the learning capabilities of systems, and organizational approaches towards AI deployment. Although many companies have piloted AI technologies like ChatGPT, most fail to move beyond experimentation, leading to limited P&L impact. Organizations that succeed tend to focus on customized solutions that adapt to existing workflows and continuously learn. The report concludes with recommendations for bridging the GenAI Divide through strategic partnerships, deep customization, and a shift from building to buying AI tools that integrate well and adapt over time.",
+  "Tone": "Bureaucratese",
+  "InputTokens": 11081,
+  "OutputTokens": 263
+}
