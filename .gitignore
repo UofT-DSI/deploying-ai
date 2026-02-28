@@ -17,6 +17,8 @@ deploying-ai-env
 # Secrets
 *.secrets
 *.secrets_*
+.secrets
+.env
 
 
 # Logs
