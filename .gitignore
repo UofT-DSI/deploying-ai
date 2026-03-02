@@ -27,3 +27,18 @@ deploying-ai-env
 *.jsonl
 *.htm
 *.txt
+# venvs
+f_env/
+fed1_env/
+**/fed1_env/
+**/venv/
+**/.venv/
+
+# secrets
+.env
+
+# Jupyter junk
+.ipynb_checkpoints/
+
+# Chroma temp (keep your assignment chroma folder, ignore test ones)
+test_chroma/
