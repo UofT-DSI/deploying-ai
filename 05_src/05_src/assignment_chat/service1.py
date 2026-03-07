@@ -23,7 +23,7 @@ print("CWD:", os.getcwd())
 
 # %%
 import os
-os.environ["API_GATEWAY_KEY"] = "0ZP4RO533EPURJOO2YJQ"
+os.environ["API_GATEWAY_KEY"] = ""
 os.environ["API_GATEWAY_BASE_URL"] = "https://k7uffyg03f.execute-api.us-east-1.amazonaws.com/prod/openai/v1"
 
 # %%
