@@ -2,7 +2,9 @@
 # or URL pointing to location of a selected LLM
 
 from openai import OpenAI
+# import to enable consumption of Chroma vector DB
 import os
+
 
 def get_client_api():
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
