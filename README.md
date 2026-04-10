@@ -103,7 +103,7 @@ By the end of this module, participants will be able to:
 
 ## Contacts
 
-### SGS Doctoral Certificate
+### SGS Doctoral Microcredential
 
 **Questions can be submitted to the _help_ channel on Slack**
 
@@ -136,7 +136,7 @@ Participants are encouraged to engage actively during the learning module. The k
 
 # Schedule
 
-## SGS Doctoral Certificate
+## SGS Doctoral Microcredential
 
 |Type |Date        |Topic                             |
 |-----|------------|----------------------------------|
