@@ -103,29 +103,16 @@ By the end of this module, participants will be able to:
 
 ## Contacts
 
-### SGS Doctoral Microcredential
+### Deploying AI (April 14 - April 30)
 
 **Questions can be submitted to the _help_ channel on Slack**
 
 * Technical Facilitator: 
-  * [Jesús Calderón](https://www.linkedin.com/in/jcalderon/)
+  * [Rogelio Cuevas](https://www.linkedin.com/in/jcalderon/)
   
 * Learning Support: 
   * [Dmytro Bonislavskyi](https://www.linkedin.com/in/dmytro-bonislavskyi/)
-  * [Sergii Khomych](https://www.linkedin.com/in/sergey-khomich-96350088/)
-  * [Néstor Rojas](https://www.linkedin.com/in/nestor-rojas-ai/)
-
-
-### Deploying AI (Feb 10 - Feb 27)
-
-**Questions can be submitted to the _help_ channel on Slack**
-
-* Technical Facilitator: 
-  * Salaar Liaqat
-  
-* Learning Support: 
-  * [Dmytro Bonislavskyi](https://www.linkedin.com/in/dmytro-bonislavskyi/)
-  * Vishnou Vinayagame 
+  * [Nakul Upadhya](https://www.linkedin.com/in/nakulupadhya/)
   
 
 ## Delivery of the Learning Module
@@ -136,42 +123,25 @@ Participants are encouraged to engage actively during the learning module. The k
 
 # Schedule
 
-## SGS Doctoral Microcredential
+## Deploying AI (April 14 - April 30)
 
 |Type |Date        |Topic                             |
 |-----|------------|----------------------------------|
-|Live| Feb. 03 | Introduction to Foundation Models|
-|Live| Feb. 05 | Evaluating Foundation Models |
-|Work| Feb. 06 | Work Period |
-|Live| Feb. 10 | Prompt Engineering |
-|Deadline| Feb. 11 | Assignment 1 Due |
-|Live| Feb. 12 | Retrieval Augmented Generation |
-|Work| Feb. 13 | Work Period |
-|Live| Feb. 17  | Fine Tuning |
-|Live| Feb. 19  | Dataset Engineering |
-|Work| Feb. 20  | Work Period   |
-|Deadline| Feb. 23 | Assignment 2 Due |
-|Live| Feb. 24  | System Optimization |
-|Work| Feb. 27  | Work Period   |
+|Live| Apr. 14 | Introduction to AI Engineering|
+|Live| Apr. 15 | Introduction to Foundation Models |
+|Live| Apr. 16 | Evaluating Foundation Models |
+|Work| Apr. 17 | Work Period |
+|Deadline| Apr. 20 | Assignment 1 Due |
+|Live| Apr. 21 | Prompt Engineering |
+|Live| Apr. 22 | Retrieval Augmented Generation |
+|Live| Apr. 23 | Agents |
+|Work| Apr. 24 | Work Period |
+|Deadline| Apr. 27 | Assignment 2 Due |
+|Live| Apr. 29 | Case Study |
+|Live| Apr. 28 | Fine Tuning |
+|Live| Apr. 30 | Dataset Engineering |
+|Work| May. 1 | Work Period |
 
-## Deploying AI (Feb 10 - Feb 27)
-
-|Type |Date        |Topic                             |
-|-----|------------|----------------------------------|
-|Live| Feb. 10 | Introduction to AI Engineering|
-|Live| Feb. 11 | Introduction to Foundation Models |
-|Live| Feb. 12 | Evaluating Foundation Models |
-|Work| Feb. 13 | Work Period |
-|Live| Feb. 17 | Prompt Engineering |
-|Live| Feb. 18 | Retrieval Augmented Generation |
-|Live| Feb. 19 | Agents |
-|Work| Feb. 20 | Work Period |
-|Deadline| Feb. 22 | Assignment 1 Due |
-|Live| Feb. 24 | Case Study |
-|Live| Feb. 25 | Fine Tuning |
-|Live| Feb. 26 | Dataset Engineering |
-|Work| Feb. 27 | Work Period |
-|Deadline| Mar. 1 | Assignment 2 Due |
 
 ### Requirements
 * Participants are not expected to have any coding experience; the learning content has been designed for beginners.
