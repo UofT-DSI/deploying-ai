@@ -1,9 +1,9 @@
-# Professor Aria — Academic Research Assistant
+# Professor Neil — Academic Research Assistant
 
 ## Overview
 
-Professor Aria is a conversational AI system built with Gradio and the OpenAI API.
-She presents as a knowledgeable, intellectually warm academic research assistant
+Professor Neil is a conversational AI system built with Gradio and the OpenAI API.
+He presents as a knowledgeable, intellectually warm academic research assistant
 who helps users explore books, research literature, and current developments across
 all academic disciplines.
 
@@ -18,7 +18,7 @@ all academic disciplines.
 **How it works:**
 - Queries the [Open Library Search API](https://openlibrary.org/dev/docs/api) — a free, no-key-required public API.
 - Returns title, author(s), publication year, page count, and subject tags for the top 5 results.
-- The assistant rephrases and enriches the results in Professor Aria's academic tone — never returning raw API output verbatim.
+- The assistant rephrases and enriches the results in Professor Neil's academic tone — never returning raw API output verbatim.
 
 **Example queries:**
 - "Find books by Yuval Noah Harari"
@@ -84,9 +84,9 @@ No separate embedding pipeline script was needed given the small dataset size (5
 
 ## Personality
 
-Professor Aria is intellectually warm, precise, and encouraging. She uses academic
+Professor Neil is intellectually warm, precise, and encouraging. He uses academic
 vocabulary naturally, contextualizes information with nuance, and always invites
-further exploration. She never returns raw data — all service outputs are woven
+further exploration. He never returns raw data — all service outputs are woven
 into her conversational prose.
 
 ---
@@ -118,11 +118,11 @@ All dependencies are part of the standard course environment:
 
 ## Implementation Decisions
 
-1. **Open Library over paid APIs:** Chosen because it is free, requires no API key,
-   and aligns with the academic assistant theme.
+1. **Open Library over paid APIs:** Chosen because it is free, requires no API key.
+  .
 
-2. **Custom abstract dataset:** Rather than using a pre-built dataset, 50 curated abstracts
-   were written to ensure broad topical coverage and consistent quality for demonstration purposes.
+2. **Custom abstract dataset:** Rather than using a pre-built dataset, a few curated abstracts
+   were written to ensure broad coverage and consistent quality.
    This also keeps the repository well under the 40 MB file size limit.
 
 3. **DuckDuckGo for web search:** The course gateway blocks the OpenAI `/responses` endpoint,

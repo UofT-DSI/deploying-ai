@@ -35,9 +35,6 @@ def web_search_service(user_query: str, client) -> str:
     The model generates a focused academic search query, which is then
     used to perform a real web search via requests and return a summary.
 
-    Since the UofT gateway may not support the Responses API web_search tool,
-    we simulate the agentic pattern: ask the model to generate a refined
-    search query, then fetch results from a public search API.
     """
     import requests
 
