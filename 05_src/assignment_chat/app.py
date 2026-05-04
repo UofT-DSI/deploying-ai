@@ -118,8 +118,8 @@ load_notes()
 # UI
 demo = gr.ChatInterface(
     fn=chat,
-    title="Outdoor Shoot Helper",
-    description="Helps with weather, photography tips, and shoot planning."
+    title="My Outdoor Photoshoot Assistant",
+    description="I use this to quickly plan outdoor photoshoots, check weather, and recall my photography notes."
 )
 
 demo.launch()
