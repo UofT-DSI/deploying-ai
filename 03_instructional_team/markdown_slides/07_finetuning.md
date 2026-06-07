@@ -19,8 +19,26 @@ $ echo "Data Sciences Institute"
 ```
 ---
 
-# Introduction
+# Main Points
 
+---
+
+---
+
+## Main Points
+
+1. Finetuning modifies model weights directly: unlike prompt engineering or RAG, it embeds new behaviors permanently into the model's parameters.
+2. Systematic prompting and RAG should be tried before finetuning; finetuning's high data, compute, and expertise requirements make it a last resort for many use cases.
+3. The key decision heuristic: RAG is for facts (information gaps), finetuning is for form (behavioral or format gaps).
+4. Full finetuning of large models is memory-prohibitive; parameter-efficient finetuning (PEFT, especially LoRA and adapter-based methods) has become the dominant approach.
+
+---
+
+## Main Points (cont.)
+
+5. Quantization (INT8, INT4) dramatically reduces the memory footprint of both inference and training, often with acceptable quality trade-offs.
+6. Smaller finetuned models frequently outperform larger general-purpose models on specialized tasks, making distillation a cost-effective strategy.
+7. Finetuning a model on one task may degrade performance on others; maintaining finetuned models requires ongoing effort as base models evolve.
 ---
 
 # Agenda
@@ -31,9 +49,6 @@ $ echo "Data Sciences Institute"
 
 + Finetuning overview
 + Finetuning techniques
-
-
-
 
 ---
 
@@ -50,7 +65,7 @@ $ echo "Data Sciences Institute"
 ## Finetuning vs. Prompting
 
 - Prompt-based methods adapt models by providing instructions, examples, or external information.
-- Finetuning directly modifies the model’s weights to embed new behaviors.
+- Finetuning directly modifies the model's weights to embed new behaviors.
 - Prompting requires little ML knowledge, while finetuning requires training expertise.
 - Prompting is usually the first step; finetuning is attempted when prompting is insufficient.
 
@@ -203,13 +218,14 @@ $ echo "Data Sciences Institute"
 
 ---
 
-## Transfer Learning and Fine Tuning
+## Why Transfer Learning?
 
 + In many applications, one cannot access large amounts of labelled text data to train a model.
-+ Transfer learning allows to apply the information learned from one task to another.
++ Transfer learning allows one to apply the information learned from one task to another.
+
 ---
 
-## Transfer Learning and Fine Tuning
+## ULMFit: Transfer Learning in Practice
 
 + ULMFit (Howard and Ruder, 2018) proposed the following process for transfer learning:
 
@@ -218,19 +234,16 @@ $ echo "Data Sciences Institute"
 
 ---
 
- 
 ![h:450px center](./images/02_ulmfit.png)
 
 ---
 
 ## LoRA: Low-Rank Adaptation
 
-
-
-+ Fundamental observation: fine-tuning a dense layer only adds a low-rank weight matrix (delta-W) to the original weight matrix (W). 
++ Fundamental observation: fine-tuning a dense layer only adds a low-rank weight matrix (delta-W) to the original weight matrix (W).
 + Fine-tuning can be simplified to train the low-rank weight matrix delta-W, which has the same number of weights as the original weight matrix W.
 + The low-rank matrix delta-W can be expressed as the product of two low-rank matrices, A and B.
-+ Instead of training the full *Body* and adding a *Head*, LoRA requires training a small delta-W with fewer parameters. 
++ Instead of training the full *Body* and adding a *Head*, LoRA requires training a small delta-W with fewer parameters.
 + Consequently, LoRA is faster to train and requires less memory.
 
 ---
@@ -250,22 +263,26 @@ $ echo "Data Sciences Institute"
 
 ---
 
-# Summary
+# Main Points
 
 ---
 
-## Key Takeaways
+## Main Points
 
-- Finetuning modifies model weights, unlike prompting or RAG.
-- It enhances instruction-following, safety, and domain-specific performance.
-- Finetuning is expensive and memory-intensive, requiring careful planning.
-- RAG is often better for information needs, while finetuning is for format and behavior.
-- Memory bottlenecks are mitigated with quantization, mixed precision, and PEFT.
-- Parameter-efficient finetuning, especially adapter-based methods, has become the standard.
-
+1. Finetuning modifies model weights directly: unlike prompt engineering or RAG, it embeds new behaviors permanently into the model's parameters.
+2. Systematic prompting and RAG should be tried before finetuning; finetuning's high data, compute, and expertise requirements make it a last resort for many use cases.
+3. The key decision heuristic: RAG is for facts (information gaps), finetuning is for form (behavioral or format gaps).
+4. Full finetuning of large models is memory-prohibitive; parameter-efficient finetuning (PEFT, especially LoRA and adapter-based methods) has become the dominant approach.
 
 ---
 
+## Main Points (cont.)
+
+5. Quantization (INT8, INT4) dramatically reduces the memory footprint of both inference and training, often with acceptable quality trade-offs.
+6. Smaller finetuned models frequently outperform larger general-purpose models on specialized tasks, making distillation a cost-effective strategy.
+7. Finetuning a model on one task may degrade performance on others; maintaining finetuned models requires ongoing effort as base models evolve.
+
+---
 
 # References
 
@@ -273,6 +290,7 @@ $ echo "Data Sciences Institute"
 
 ## References
 
-+ Howard, Jeremy, and Sebastian Ruder. "Universal language model fine-tuning for text classification." arXiv preprint arXiv:1801.06146 (2018). 
-+ Hu, Edward J., et al. "Lora: Low-rank adaptation of large language models." arXiv preprint arXiv:2106.09685 (2021).bridging-the-gap-enhanced-neural-network-techniques-for-ai/).
++ Howard, Jeremy, and Sebastian Ruder. "Universal language model fine-tuning for text classification." [arXiv:1801.06146](https://arxiv.org/abs/1801.06146) (2018).
++ Hu, Edward J., et al. "LoRA: Low-rank adaptation of large language models." [arXiv:2106.09685](https://arxiv.org/abs/2106.09685) (2021).
++ Huyen, Chip. AI engineering: Building applications with foundation models. O'Reilly Media, Inc., 2024.
 + Huyen, Chip. Designing machine learning systems. O'Reilly Media, Inc., 2022.

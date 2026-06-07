@@ -4,23 +4,21 @@
 * [Description](#description)
 * [Learning Outcomes](#learning-outcomes)
 * [Contacts](#contacts)
-* [Delivery of the Learning module](#delivery-of-the-learning-module)
+* [Delivery of the Learning Module](#delivery-of-the-learning-module)
 * [Schedule](#schedule)
 * [Requirements](#requirements)
 * [Assessment](#assessment)
   + [Quizzes](#quizzes)
   + [Assignments](#assignments)
-* [Requirements](#requirements)
+  + [Grades](#grades)
 * [Resources](#resources)
-  + [Documents](#documents)
-  + [Videos](#videos)
 * [Folder Structure](#folder-structure)
 
 
 
 ## Description
 
-This microcredential provides an overview of the Design of AI systems that are embedded in data products and applications. It covers the fundamental components of the infrastructure, systems, and methods necessary to implement and maintain AI systems. 
+This microcredential provides an overview of the design of AI systems that are embedded in data products and applications. It covers the fundamental components of the infrastructure, systems, and methods necessary to implement and maintain AI systems. 
 
 The course has two components: 
 
@@ -69,7 +67,7 @@ The course is based on [Chip Huyen's book, AI Engineering](https://huyenchip.com
     * Interacting with APIs and MCP
     * Agent failure modes and evaluation
 
-- **Part 3. Optimization and System Design.** Enhancing AI systems can be achieved by finetuning them on specific tasks or to provide outputs that avoid undesired results. As well, good design practices can be used to reduce latency and costs and to provide consistent experiences for users.
+- **Part 3. Optimization and System Design.** AI systems can be enhanced by fine-tuning them on specific tasks or by configuring outputs to avoid undesired results. Additionally, good design practices can reduce latency and costs and provide consistent experiences for users.
 
   - **Finetuning**
 
@@ -88,7 +86,7 @@ The course is based on [Chip Huyen's book, AI Engineering](https://huyenchip.com
     * AI engineering architecture
     * User feedback
 
-We will discuss the tools and techniques required to do the above in good order and at scale. However, we will not discuss the inner workings of models, advantages, and so on. We will also not discuss the theoretical aspects of feature engineering or hyperparameter tuning. We will focus on tools and reproducibility.
+We will discuss the tools and techniques required to accomplish the above in good order and at scale. However, we will not discuss the inner workings of models, advantages, and so on. We will also not discuss the theoretical aspects of feature engineering or hyperparameter tuning. We will focus on tools and reproducibility.
 
 ## Learning Outcomes
 
@@ -103,51 +101,55 @@ By the end of this module, participants will be able to:
 
 ## Contacts
 
-### Deploying AI (April 14 - April 30)
+### Deploying AI - Doctoral Certificate (June 2026)
 
 **Questions can be submitted to the _help_ channel on Slack**
 
 * Technical Facilitator: 
-  * [Rogelio Cuevas](https://www.linkedin.com/in/jcalderon/)
+  * [Jesús Calderón](https://www.linkedin.com/in/jcalderon/)
   
 * Learning Support: 
+
   * [Dmytro Bonislavskyi](https://www.linkedin.com/in/dmytro-bonislavskyi/)
-  * [Nakul Upadhya](https://www.linkedin.com/in/nakulupadhya/)
+  * [Sergii Khomych](https://www.linkedin.com/in/sergey-khomich-96350088/)
+  * [Shiraz Latif](https://www.linkedin.com/in/shiraz-latif/)
+  
   
 
 ## Delivery of the Learning Module
 
-This module will include live learning sessions and optional, asynchronous work periods. During live learning sessions, the Technical Facilitator will introduce and explain key concepts and demonstrate core skills. Learning is facilitated during this time. Before and after each live learning session, the instructional team will be available to answer questions about the module's core concepts. Optional work periods are to be used to seek help from peers, the Learning Support team, and to work through the homework and assignments in the learning module, with access to live help. Content is not facilitated, but rather, this time should be driven by participants. We encourage participants to come to these work periods with questions and problems to work through. 
+This module will include live learning sessions and optional asynchronous work periods. During live learning sessions, the Technical Facilitator will introduce and explain key concepts and demonstrate core skills. Learning is facilitated during this time. Before and after each live learning session, the instructional team will be available to answer questions about the module's core concepts. Optional work periods are to be used to seek help from peers, the Learning Support team, and to work through the homework and assignments in the learning module, with access to live help. Content is not facilitated, but rather, this time should be driven by participants. We encourage participants to come to these work periods with questions and problems to work through. 
  
 Participants are encouraged to engage actively during the learning module. The key to developing the core skills in each learning module is through practice. The more participants engage in coding alongside the instructional team and apply these skills in each module, the more likely they are to solidify them. 
 
-# Schedule
+## Schedule
 
-## Deploying AI (April 14 - April 30)
+## Deploying AI - Doctoral Certificate (June 2026)
 
 |Type |Date        |Topic                             |
 |-----|------------|----------------------------------|
-|Live| Apr. 14 | Introduction to AI Engineering|
-|Live| Apr. 15 | Introduction to Foundation Models |
-|Live| Apr. 16 | Evaluating Foundation Models |
-|Work| Apr. 17 | Work Period |
-|Deadline| Apr. 20 | Assignment 1 Due |
-|Live| Apr. 21 | Prompt Engineering |
-|Live| Apr. 22 | Retrieval Augmented Generation |
-|Live| Apr. 23 | Agents |
-|Work| Apr. 24 | Work Period |
-|Deadline| Apr. 27 | Assignment 2 Due |
-|Live| Apr. 29 | Case Study |
-|Live| Apr. 28 | Fine Tuning |
-|Live| Apr. 30 | Dataset Engineering |
-|Work| May. 1 | Work Period |
+|Live| June 17 | Introduction to AI Engineering|
+|Work| June 19 | Work Period |
+|Live| June 22 | Introduction to Foundation Models |
+|Live| June 24 | Evaluating Foundation Models |
+|Work| June 26 | Work Period |
+|Deadline| June 29 | Assignment 1 Due |
+|Live| July 3 | Prompt Engineering |
+|Live| July 6 | Retrieval Augmented Generation |
+|Live| July 8 | Agents |
+|Work| July 10 | Work Period |
+|Deadline| July 13 | Assignment 2 Due |
+|Live| July 13 | Fine Tuning |
+|Live| July 17 | Dataset Engineering |
+
 
 
 ### Requirements
+
 * Participants are not expected to have any coding experience; the learning content has been designed for beginners.
 * Participants are encouraged to ask questions, and collaborate with others to enhance their learning experience.
 * Participants must have a computer and an internet connection to participate in online activities.
-* Participants must not use generative AI such as ChatGPT to generate code to complete assignments. It should be used as a support tool to help you find answers to questions you may have.
+* Participants must not use generative AI such as ChatGPT to generate code to complete assignments. It should be used as a support tool to help them find answers to questions they may have.
 * We expect participants to have completed the instructions mentioned in the [onboarding repo](https://github.com/UofT-DSI/onboarding/blob/main/environment_setup/README.md).
 * We encourage participants to default to having their camera on at all times, and turning the camera off only as needed. This will significantly enhance the learning experience for all participants and provide real-time feedback for the instructional team. 
 
@@ -158,7 +160,7 @@ Your performance on this module will be assessed using six quizzes and two assig
 
 #### Quizzes
 
-Quizzes will help you build key concepts in foundation models and AI Engineering. In our experience, learners take 5-10 minutes to complete each quiz, achieving an average score of 80%. 
+Quizzes will help you build key concepts in foundation models and AI Engineering. In our experience, learners complete each quiz in 5–10 minutes and typically achieve an average score of 80%. 
 
 + Each quiz will contain material from each live learning session.
 + You will receive a link to each quiz during the respective live learning session. The links are personalized; please do not share them. If you did not receive a link, contact any member of the course delivery team.
@@ -170,7 +172,7 @@ Quizzes will help you build key concepts in foundation models and AI Engineering
 
 Assignments will help you develop coding and debugging skills. They will cover foundational skills and will extend to advanced concepts. We recommend that you attempt all assignments and submit your work, even if it is incomplete (partial submissions will earn partial marks). 
 
-+ Each assignment should be submitted using the usual method in DSI via a Pull Request. 
++ Each assignment should be submitted via a Pull Request, following the usual DSI submission process. 
 + The assignments and their respective rubrics are:
 
   
@@ -231,7 +233,7 @@ A different learner with grades as shown below would receive "fail":
   - [Mac](https://docs.docker.com/desktop/setup/install/mac-install/)
   - [Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
   - [Linux](https://docs.docker.com/desktop/setup/install/linux/)
-+ Docker Desktop [Documnetation](https://docs.docker.com/desktop/)
++ Docker Desktop [Documentation](https://docs.docker.com/desktop/)
 + [What is Docker?](https://www.youtube.com/watch?v=Gjnup-PuquQ) on Youtube
 + A [playlist with tutorials about Docker](https://www.youtube.com/playlist?list=PLe4mIUXfbIqaYmsoFahYCbijPU4rjM38h) on YouTube
 
@@ -262,11 +264,11 @@ A different learner with grades as shown below would receive "fail":
 ```
 
 * **.github**: Contains issue templates and pull request templates for the repository.
-* **materials/slides**: Module slides and interactive notebooks (.ipynb files) used during learning sessions.
-* **activities**: Contains graded assignments, exercises, and homework to practice concepts covered in the learning module.
-* **instructional_team**: Resources for the instructional team.
-* **this_cohort**: Additional materials and resources for this cohort, including live coding files.
-* **src/data**: Source code, databases, logs, and required dependencies (requirements.txt) needed during the module.
+* **01_materials**: Module slides and interactive notebooks (.ipynb files) used during learning sessions.
+* **02_activities**: Contains graded assignments, exercises, and homework to practice concepts covered in the learning module.
+* **03_instructional_team**: Resources for the instructional team.
+* **04_this_cohort**: Additional materials and resources for this cohort, including live coding files.
+* **05_src**: Source code and required dependencies needed during the module.
 * **.gitignore**: Files to exclude from this folder, specified by the Technical Facilitator
 * **LICENSE**: The license for this repository.
 * **SETUP.md**: Contains the steps required to set up this repo for the module.

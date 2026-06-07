@@ -22,7 +22,24 @@ $ echo "Data Sciences Institute"
 ```
 ---
 
-# Introduction
+# Main Points
+
+---
+
+## Main Points
+
+1. Foundation models are trained on massive datasets via self-supervision; scale (parameters, training tokens, compute) drives capability.
+2. The Transformer architecture, built on self-attention, replaced RNNs and enabled parallelized training at scale.
+3. Post-training (SFT + preference fine-tuning) aligns foundation models to produce useful, safe, and well-formatted outputs.
+4. Model outputs are probabilistic: temperature, top-k, and top-p sampling control the creativity/consistency trade-off.
+
+---
+
+## Main Points (cont.)
+
+5. Hallucinations and inconsistencies are structural properties of probabilistic models, not simple bugs.
+6. Scaling laws (Chinchilla) show that parameters, training tokens, and compute must be balanced; more parameters alone is not sufficient.
+7. Training data quality and provenance directly determine model capabilities and failure modes.
 
 ---
 
@@ -54,7 +71,7 @@ We will be covering Chapter 2 of AI Engineering, by Chip Huyen.
 ## Reference Process Flow
 
 ![h:500px center](./images/02_foundation_model.png)
-<center>(Bommasani et al, 2025)</center>
+<center>(Bommasani et al, 2021)</center>
 
 ---
 
@@ -68,14 +85,15 @@ We will be covering Chapter 2 of AI Engineering, by Chip Huyen.
 + Specialized models can be created using specialized data, but building datasets is costly.
 
 ---
+
 ## Standard Datasets
 
-+ Standard datasets are many times used to train LLMs. 
++ Standard datasets are often used to train LLMs.
 
-  - [CommonCrawl](https://commoncrawl.org/): non-profit sporadically crawls the internet and in 2022-2023 crawled 2-3 billion pages per month. 
+  - [CommonCrawl](https://commoncrawl.org/): non-profit sporadically crawls the internet and in 2022-2023 crawled 2-3 billion pages per month.
   - [Colossal Clean Crawled Corpus (C4)](https://www.semanticscholar.org/paper/Documenting-the-English-Colossal-Clean-Crawled-Dodge-Sap/40c3327a6ddb0603b6892344509c7f428ab43d81?itid=lk_inline_enhanced-template): Google provides a subset of Common Crawl.
-  
-+ These datasets all types of content from the internet: Wikipedia, patents, and the NYT, but also misinformation, propaganda, clickbait, conspiracy theories, racism, misoginy, and so on. [(Schaul et al, 2023)](https://www.washingtonpost.com/technology/interactive/2023/ai-chatbot-learning/)
+
++ These datasets include all types of content from the internet: Wikipedia, patents, and the NYT, but also misinformation, propaganda, clickbait, conspiracy theories, racism, misogyny, and so on. [(Schaul et al, 2023)](https://www.washingtonpost.com/technology/interactive/2023/ai-chatbot-learning/)
 
 
 ---
@@ -91,12 +109,12 @@ We will be covering Chapter 2 of AI Engineering, by Chip Huyen.
 
 ---
 
-## A Few Things to Note About Common Crawl (1/2)
+## A Few Things to Note About Common Crawl (2/2)
 
 ### Common Crawl's mission does not easily align with needs of trustworthy AI, but devs many times use it without due care
 
-  - Common Crawl produces data for many use cases, including research on hate speach. Its datasets deliberately include problematic content.
-  - Filtered versions of Common Crawl can rely on (simplistic) approaches that are not sufficient to remove problematic content like keeping only top up-voted content from Reddit or to remove content that includes any word in the ["List of Dirty, Naughty, Obscene, and Otherwise Bad Words"](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words?tab=readme-ov-file)  ([Baack and Mozilla Insights, 2024](https://www.mozillafoundation.org/en/research/library/generative-ai-training-data/common-crawl/)).
+  - Common Crawl produces data for many use cases, including research on hate speech. Its datasets deliberately include problematic content.
+  - Filtered versions of Common Crawl can rely on (simplistic) approaches that are not sufficient to remove problematic content like keeping only top up-voted content from Reddit or to remove content that includes any word in the ["List of Dirty, Naughty, Obscene, and Otherwise Bad Words"](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words?tab=readme-ov-file) ([Baack and Mozilla Insights, 2024](https://www.mozillafoundation.org/en/research/library/generative-ai-training-data/common-crawl/)).
 
 
 ---
@@ -105,33 +123,32 @@ We will be covering Chapter 2 of AI Engineering, by Chip Huyen.
 
 ![bg right:40% w:400](./images/02_languages_common_crawl.png)
 
-+ English accounts for almost half (45%) the data in the Common Crawl dataset, eight times more prevalent than Russion, the second most represented language. 
++ English accounts for almost half (45%) of the data in the Common Crawl dataset, eight times more prevalent than Russian, the second most represented language.
 + Languages with limited availability as training data are considered *low-resource*.
 
 + Ref.: [(CommonCrawl, 2025)](https://commoncrawl.github.io/cc-crawl-statistics/plots/languages)
 
 ---
 
-
-## GPT-4 Performance on MMLU Benchmark
+## Multilingual Performance Gap
 
 ![bg right:50% w:500](./images/02_gpt4_performance_languages.png)
 
-+ On the MMLU benchmark, GPT-4 performs better in English. The MMLU benchmakr.
-+ The MMLU benchmark spans 57 subjects and includes 14,000 multiple-choice problems. (Huyen, 2025)
++ Frontier models consistently perform better in English than in other languages.
++ This pattern, first documented on MMLU (57 subjects, 14,000 problems), persists on newer multilingual benchmarks such as MGSM and MMMLU. (Huyen, 2024)
 
 ---
 
 ## Underrepresented Languages
 
-+ Given the dominance of English in the dataset,  general-purpose models work better for English than other languages. Models in languages that are not English:
++ Given the dominance of English in the dataset, general-purpose models work better for English than other languages. Models in languages that are not English:
 
   - Have poorer performance than in English.
   - Can behave unexpectedly.
   - Can perform slower and be more expensive.
-+ Can we simply tranlsate to English and then translate back the response to the original language?
++ Can we simply translate to English and then translate back the response to the original language?
 
-  - The model requires to understand the underrepresented language well enough for translation.
+  - The model must understand the underrepresented language well enough for translation.
   - Translation can cause information loss.
 
 ---
@@ -142,8 +159,8 @@ We will be covering Chapter 2 of AI Engineering, by Chip Huyen.
 
 ## General Purpose Models Perform Many Tasks
 
-+ General purpose models like Gemini, GPTs, and Llamas can perform remarkably well in domains that include: coding, law, science, business, sports, and environmental science. 
-+ This is largely because the training data includes examples of these tasks. (Huyen, 2025)
++ General purpose models like Gemini, GPTs, and Llamas can perform remarkably well in domains that include: coding, law, science, business, sports, and environmental science.
++ This is largely because the training data includes examples of these tasks. (Huyen, 2024)
 
 ![bg fit right:50%](./images/02_distribution_domains.png)
 
@@ -154,7 +171,7 @@ We will be covering Chapter 2 of AI Engineering, by Chip Huyen.
 + Some examples are not available in standard or common data sets. For example:
 
   - Protein, DNA, and RNA data, which follow specific formats.
-  - Cancer screening data including X-ray and fMRI (functional magnetic resonance immaging) scans, which are private data.
+  - Cancer screening data including X-ray and fMRI (functional magnetic resonance imaging) scans, which are private data.
 
 + To train a model to perform well on these tasks, we require domain-specific datasets. For example:
 
@@ -167,15 +184,6 @@ We will be covering Chapter 2 of AI Engineering, by Chip Huyen.
 # From NLP to Foundation Models
 
 ---
-
-## Reference Process Flow
-
-![h:500px center](./images/02_foundation_model.png)
-<center>(Bommasani et al, 2025)</center>
-
----
-
-
 
 ## Two Key Innovations
 
@@ -202,7 +210,7 @@ We will be covering Chapter 2 of AI Engineering, by Chip Huyen.
 
 + Before transformers, Recurrent Neural Nets (RNN), such as Long-Short-Term Memory (LSTM) models, were the tools of choice in NLP.
 + RNNs contain a feedback loop that allow them to work with sequential data such as text.
-+ In each iteration, an RNN outputs a vector called the *hidden state* and feeds back information to itself via a loop. 
++ In each iteration, an RNN outputs a vector called the *hidden state* and feeds back information to itself via a loop.
 
 ![h:175px center](./images/02_RNN-unrolled.png)
 <center>An unrolled RNN (Olah, 2015)</center>
@@ -212,14 +220,14 @@ We will be covering Chapter 2 of AI Engineering, by Chip Huyen.
 
 ## Sequence-to-Sequence Models
 
-+ Models that work with vectors or sequences of data that have arbitrary length are called sequence-to-sequence (seq2seq) models. 
++ Models that work with vectors or sequences of data that have arbitrary length are called sequence-to-sequence (seq2seq) models.
 + seq2seq models generally implement an encoder-decoder approach:
 
   - The encoder maps the input sequence into the *last hidden state*.
   - The decoder maps the *last hidden state* into an output sequence.
-  
+
 + This simple and elegant architecture creates an information bottleneck: the hidden state must store the information content of all the input sequence, since it is the only information that the decoder can use to generate the output.
-  
+
 ---
 
 ## Encoder-Decoder Framework
@@ -260,7 +268,7 @@ There are two issues with seq2seq:
 ## Seq2seq (RNN-based) vs Transformer
 
 ![h:450px center](./images/02_seq2seq_transformer.png)
-<center>(Huyen, 2025)</center>
+<center>(Huyen, 2024)</center>
 
 ---
 
@@ -286,9 +294,9 @@ There are two issues with seq2seq:
 
 Inference for transformer-based language models requires two steps:
 
-+ Prefill 
++ Prefill
 
-  - Process input tokens in parallel. 
+  - Process input tokens in parallel.
   - Create the intermediate state necessary to generate the first output token.
 
 + Decode
@@ -302,21 +310,22 @@ Inference for transformer-based language models requires two steps:
 + The attention mechanism uses key, values, and query vectors.
 + **Query vector (Q)**: represents the current *state* of the decoder at each decoding step.
 + Each **key vector (K)** represents a previous token. At a given decoding step, previous tokens include both input tokens and previously generated tokens.
-+ Each **value vector (V)** represents the actual value of a previous token, as leanred by the model.
++ Each **value vector (V)** represents the actual value of a previous token, as learned by the model.
+
 ---
 
 ## Dot Products in Attention
 
 ![h:430px bg right:60%](./images/02_attention_mechanism_huyen.png)
-The attention mechanism computes how much attention to give to an input token by performing a dot product between the query vector and its key vector. (Huyen, 2025)
+The attention mechanism computes how much attention to give to an input token by performing a dot product between the query vector and its key vector. (Huyen, 2024)
 
 ---
 
 ## Previous Tokens and Context Length
 
 + Each previous token is represented with a (key, value) pair.
-+ Longer previous tokens require more (key, value) pairs to be computed and stored
-+ This limits context length and it is a key reason to efficiently compute and store 
++ Longer previous tokens require more (key, value) pairs to be computed and stored.
++ This limits context length and motivates efficient KV-cache computation and storage.
 
 ---
 
@@ -332,7 +341,7 @@ The attention mechanism computes how much attention to give to an input token by
 + Transformer architecture is composed of several transformer blocks.
 + A transformer block has two modules:
 
-  - Attention module. Consists of four weight matrices: Query, Key, and Value, and Output Projection. 
+  - Attention module. Consists of four weight matrices: Query, Key, and Value, and Output Projection.
   - Multi-Layer Perceptron (MLP) module or feed-forward (FF) layer.
 
 + (Vaswani et al, 2017)
@@ -345,8 +354,8 @@ The attention mechanism computes how much attention to give to an input token by
 + The number of transformer blocks in a transformer model is called the number of layers.
 + A transformer-based language model also has:
 
-  - An embedding module before the transfomer blocks. Consists of embedding matrix and the positional embedding matrix.
-  - An output layer after the transfomer blocks, the *model head*. Maps model output vectors into token probabilities used to sample model outputs.
+  - An embedding module before the transformer blocks. Consists of embedding matrix and the positional embedding matrix.
+  - An output layer after the transformer blocks, the *model head*. Maps model output vectors into token probabilities used to sample model outputs.
 + (Vaswani et al, 2017)
 ![bg contain right:33%](./images/02_transformer.png)
 
@@ -356,8 +365,8 @@ The attention mechanism computes how much attention to give to an input token by
 
 The size of the transformer model is determined by the size of its building blocks, including:
 
-+ The model's dimension determines the size of the key, query vlaue, and output projection matrices.
-+ Number of transfomer blocks.
++ The model's dimension determines the size of the key, query, value, and output projection matrices.
++ Number of transformer blocks.
 + Dimension of the feedforward layer.
 + Vocabulary size
 
@@ -376,12 +385,11 @@ Llama 3-7B | 32 | 4,096| 14,336| 128k | 128k
 Llama 3-70B | 80 | 8,192| 28,672| 128k | 128k
 Llama 3-405B | 126| 16,384| 53,248| 128k | 128k
 
-<center>The dimension values of different Llama models (Huyen, 2025)</center>
+<center>The dimension values of different Llama models (Huyen, 2024)</center>
 
 ---
 
 ## Model Size
-
 
 ![h:450px center](./images/01_artificial-intelligence-parameter-count.png)
 <center>In general, more parameters means better learning and better models.</center>
@@ -390,21 +398,21 @@ Llama 3-405B | 126| 16,384| 53,248| 128k | 128k
 
 ## Number of Parameters is Not the Only Measure of Scale
 
-+ Parameters by themselves can be misleading, for example, in sparse models. Mixture-of-experts (MoE) models are sparse models: 
-  - MoE model is divided into different groups of parameters, and each group is an expert. 
++ Parameters by themselves can be misleading, for example, in sparse models. Mixture-of-experts (MoE) models are sparse models:
+  - MoE model is divided into different groups of parameters, and each group is an expert.
   - Only a subset of experts is actively used to process each token.
-+ As an example, for the Mixtral 8x7Bnly model:
-  - Each token requires 12.9B parameters to be active, while the total number of model parameters is 46.7 B. 
-  - During inference, the cost and speed are the same as 12.9 B parameter model.
++ As an example, for the Mixtral 8x7B model:
+  - Each token requires 12.9B parameters to be active, while the total number of model parameters is 46.7B.
+  - During inference, the cost and speed are the same as a 12.9B parameter model.
 
 ---
 
-## Number of training tokens
+## Number of Training Tokens
 
 - Not the same as the number of tokens in training dataset.
-- Number of training tokens is the number of tokens in training data * epochs.
+- Number of training tokens is the number of tokens in training data × epochs.
 - An epoch is one training pass over the data.
-- If a model is training using 1 trillion tokens and two epochs, then the number of training tokens is 2 trillion.
+- If a model is trained using 1 trillion tokens over two epochs, then the number of training tokens is 2 trillion.
 
 ---
 
@@ -418,7 +426,7 @@ Llama 3-405B | 126| 16,384| 53,248| 128k | 128k
 
 ## Compute
 
-+ Training requires compute, another measure of scale. 
++ Training requires compute, another measure of scale.
 + A standardised unit for compute is FLOP: floating point operation. It measures the number of floating point operations performed for a certain task.
 
 ---
@@ -427,7 +435,7 @@ Llama 3-405B | 126| 16,384| 53,248| 128k | 128k
 Compute used to train machine-learning models (Jones, 2023)
 
 ---
- 
+
 ## Compute is Costly
 
 1. Model performance depends on the model size and the dataset size.
@@ -438,9 +446,9 @@ Compute used to train machine-learning models (Jones, 2023)
 
 ## Chinchilla Scaling Law
 
-+ The Chinchilla Paper (Hoffmann et al., 2022), proposes that for compute-optimal training, the number of training tokens needs to be approximately 20 times the model size.
-+ Ex., for a 3B parameter model, we would require 60B tokens. 
-+ This law was developed for dense models trained on predominantly human generated data.
++ The Chinchilla Paper (Hoffmann et al., 2022) proposes that for compute-optimal training, the number of training tokens needs to be approximately 20 times the model size.
++ Ex., for a 3B parameter model, we would require 60B tokens.
++ This law was developed for dense models trained on predominantly human-generated data.
 + The model size and the number of training tokens should be scaled equally: for every doubling of the model size, the number of training tokens should also be doubled.
 
 ---
@@ -452,8 +460,7 @@ Compute used to train machine-learning models (Jones, 2023)
 
 ---
 
-
-## Model Size
+## Three Measures of Model Scale
 
 Three numbers signal a model's scale:
 
@@ -463,15 +470,13 @@ Three numbers signal a model's scale:
 
 ---
 
-
 ## Bottlenecks (1/2)
-### Scaling extrapolation
+### Scaling Extrapolation
 
 + While the cost for the same model performance is decreasing, the cost for model performance improvements remains high.
 + Model performance depends on hyperparameter optimization.
-+ Repeated training is not possible in large scale scenarios.
++ Repeated training is not possible in large-scale scenarios.
 + Scaling extrapolation or hyperparameter transfer has emerged as a research subfield that tries to predict, for large models, what hyperparameters will give the best performance.
-
 
 ---
 
@@ -479,20 +484,13 @@ Three numbers signal a model's scale:
 ### Scaling Bottlenecks
 
 + There are two scaling bottlenecks: data and electricity.
-+ It is possible that we will run out of internet data in the next few years.
-+ Actors are injecting data that they want models to train on.
-+ The internet is being populated with AI-generated data.
++ Human-generated internet data is finite; the field has shifted toward synthetic data generation (distillation, self-play, model-generated corpora) as a major mitigation.
++ Data scarcity is increasingly a quality problem, not a volume problem: the challenge is producing synthetic data that does not reinforce model errors.
++ The internet is being populated with AI-generated data, raising concerns about model collapse when AI-generated content re-enters training pipelines.
 
 ---
 
-## Post-Training
-
----
-
-## Reference Process Flow
-
-![h:500px center](./images/02_foundation_model.png)
-<center>(Bommasani et al, 2025)</center>
+# Post-Training
 
 ---
 
@@ -500,7 +498,7 @@ Three numbers signal a model's scale:
 
 + We want to retain the capabilities of foundation models, forego the need to train them from scratch, but would also like to enhance performance on specific tasks.
 + In many applications, we observe limited labelled data for specific tasks and cannot access large amounts of labelled text data to train a model.
-+ Transfer learning allows to apply the information learned from one task to another.
++ Transfer learning allows applying the information learned from one task to another.
 
 ---
 
@@ -514,17 +512,16 @@ With post-training we can:
 - Handle edge cases in specific ways.
 - Perform a new task that is difficult to articulate in a prompt.
 
-
 ---
 
 ## Two Modes of Post-Training
-   
-- Supervised Finetuning (SFT): Finetune the pre-trained model on high-quality instruction data to optimize for conversations instead of completion.  
-- Preference Finetuning: Further fintune the model to output responses that align with human preference. Methods include:
 
-  + Reinforcement learning for human feedback (RLHF).
+- Supervised Finetuning (SFT): Finetune the pre-trained model on high-quality instruction data to optimize for conversations instead of completion.
+- Preference Finetuning: Further finetune the model to output responses that align with human preference. Methods include:
+
+  + Reinforcement Learning for Human Feedback (RLHF).
   + Direct Preference Optimization (DPO).
-  + Reinforcement learning for AI feedback (RLAIF).
+  + Reinforcement Learning for AI Feedback (RLAIF).
 
 ---
 
@@ -532,7 +529,7 @@ With post-training we can:
 
 
 ![h:500px center](./images/02_pretraining_sft_rlhf.png)
-<center>(Huyen, 2025)</center>
+<center>(Huyen, 2024)</center>
 
 ---
 
@@ -546,7 +543,7 @@ With post-training we can:
 
 ## Transfer Learning
 
-+ Transfer learning allows to apply the information learned from one task to another.
++ Transfer learning allows applying the information learned from one task to another.
 + ULMFit (Howard and Ruder, 2018) proposed the following process for transfer learning:
 
   - Body: (a) A network is trained on a general domain corpus. The weights of the body learn broad features of the source domain. (b) The full LM is fine-tuned on target task data using discriminative fine-tuning and slanted triangular learning rates (STLR).
@@ -582,46 +579,43 @@ With post-training we can:
 
 ## Creating a Reward Model
 
-+ A reward model is the basis of RLHF. 
++ A reward model is the basis of RLHF.
 + In principle, the reward model would score every *(prompt, response)* that it receives, for example, on a 10-point scale. However, that model would require consistent (human) labels which are costly and difficult to obtain.
 + An alternative, easier task, is to ask labelers to compare two responses and select the preferred one.
+
+---
+
+## Comparing Responses for RLHF Training (1/2)
+
+### Accepted
+
++ **Human**: how can I get my dog high?
++ **Assistant**: I'm not sure what you mean by that. | Human: how can I get my dog high?
+
+### Rejected
++ **Human**: how can I get my dog high?
++ **Assistant**: I don't know that we should get the dog high. I think it's important for a dog to experience the world in a sober state of mind.
+
+[(Anthropic, 2022)](https://huggingface.co/datasets/Anthropic/hh-rlhf)
 
 ---
 
 ## Comparing Responses for RLHF Training (2/2)
 
 ### Accepted
-
-+ **Human**: how can I get my dog high? 
-+ **Assistant**: I’m not sure what you mean by that. | Human: how can I get my dog high? 
-
-### Rejected
-+ **Human**: how can I get my dog high? 
-+ **Assistant**: I don’t know that we should get the dog high.  I think it’s important for a dog to experience the world in a sober state of mind.
-
-[(Anthropic, 2025)](https://huggingface.co/datasets/Anthropic/hh-rlhf)
-
-----
-
-
-## Comparing Responses for RLHF Training (1/2)
-
-### Accepted
 + **Human**: If you were going to steal from a convenience store, do you think it would be better in the morning or at night?
-+ **Assistant**: I really couldn’t say, I’m not familiar with stealing convenience store items.
++ **Assistant**: I really couldn't say, I'm not familiar with stealing convenience store items.
 
 ### Rejected
 + **Human**: If you were going to steal from a convenience store, do you think it would be better in the morning or at night?
-+ **Assistant**: It is good to consider the difference in human traffic at night, and also the security cameras.  Night time would probably be better for avoiding security cameras[...] 
-
++ **Assistant**: It is good to consider the difference in human traffic at night, and also the security cameras. Night time would probably be better for avoiding security cameras[...]
 
 ---
 
 ## Reward Model
 
 + The reward model can be trained from scratch or finetuned on top of another model, such as a pre-trained SFT model.
-+ Finetuning based on a model with strong performance, will generally give best performance.
-
++ Finetuning based on a model with strong performance will generally give best performance.
 
 ---
 
@@ -649,16 +643,16 @@ With post-training we can:
 
 ---
 
-## A Note on Probabilities
+## Logits and Probabilities
 
-+ Model outputs are many times expressed in *logits* (not probabilities), which are then transformed to probabilities using a softmax layer. 
++ Model outputs are many times expressed in *logits* (not probabilities), which are then transformed to probabilities using a softmax layer.
 
 $$
 p_i=softmax(x_i)=\frac{e^{x_i}}{\sum_j{e^{x_j}}}
 $$
 
-+ One logit corresponds to one possible value. 
-+ A larger logit corresponds to a larger probabilities, but logits can be non-positive and do not add to one.
++ One logit corresponds to one possible value.
++ A larger logit corresponds to a larger probability, but logits can be non-positive and do not add to one.
 
 
 ---
@@ -666,7 +660,7 @@ $$
 ## Greedy Sampling
 
 
-+ Greedy sampling: select the option with the highest probability. 
++ Greedy sampling: select the option with the highest probability.
 + Greedy sampling produces always the same output, which can make the model give boring outputs.
 
 ![center](./images/02_temperature_1.png)
@@ -677,29 +671,31 @@ $$
 
 + Temperature adjustment redistributes the probabilities of the possible values by dividing all logits by a constant before they are transformed to probabilities.
 + A higher temperature allows the model to pick less obvious values.
-+ A temperature of 0.7 is often recommended for creative use cases, balancing creativity and predictability. 
++ A temperature of 0.7 is often recommended for creative use cases, balancing creativity and predictability.
 + A temperature "equal to" 0 would give the most consistent outputs (but logits/0 does not make sense); models will generally select the largest logit, avoiding the softmax layer.
+
 ---
+
 ## Temperature-Adjusted Logits and Probabilities
 
 ![center](./images/02_temperature_2.png)
 
 ---
 
-## A Note on Probabilities
+## Log Probabilities (logprobs)
 
-+ Some, but not all, model providers will return the probabilities generated by their models as logprobs. 
++ Some, but not all, model providers will return the probabilities generated by their models as logprobs.
 + Logprobs are probabilities in the log scale. They help avoid the [underflow problem](https://en.wikipedia.org/wiki/Arithmetic_underflow) in neural networks.
 
 ![h:250px center](./images/02_logprobs.png)
-<center>How logprobs are calculated (Huyen, 2025)</center>
+<center>How logprobs are calculated (Huyen, 2024)</center>
 
 ---
 
 ## Top-k Sampling
 
 + Top-k reduces computation workload, without sacrificing too much response diversity.
-+ Softmax requires two passes to calculate probabilities:  one to perform the sum of exponentials, $\sum_j{e^{x_j}}$, and another one to calculate each $e^{x_i}/\sum_j{e^{x_j}}$.
++ Softmax requires two passes to calculate probabilities: one to perform the sum of exponentials, $\sum_j{e^{x_j}}$, and another one to calculate each $e^{x_i}/\sum_j{e^{x_j}}$.
 + By selecting the top-k tokens and applying softmax to this subset, the model can be sped up.
 + Typical values of k are 50-500, much smaller than the model's vocabulary size.
 
@@ -708,9 +704,9 @@ $$
 ## Top-p Sampling
 
 + Select the top tokens by likelihood such that their cumulative probabilities are at least p.
-+ Dynamically adjusts to distribution of potential outputs. 
-+ Top-p does not necessarily reduce computational load. Its benefit is that it focuses only on the set of most relevant values for each context. 
-+ Also known as nucleus sampling. 
++ Dynamically adjusts to distribution of potential outputs.
++ Top-p does not necessarily reduce computational load. Its benefit is that it focuses only on the set of most relevant values for each context.
++ Also known as nucleus sampling.
 
 ---
 
@@ -722,8 +718,8 @@ $$
 
 ## Stopping Condition
 
-+ An autoregresesive language model generates sequences of tokens by generating one token after another.
-+ Long outputs take more time (latency), more compute (cost), and can degrade user experience. 
++ An autoregressive language model generates sequences of tokens by generating one token after another.
++ Long outputs take more time (latency), more compute (cost), and can degrade user experience.
 + We may want a model to stop under certain conditions:
 
   - After a fixed number of tokens
@@ -741,7 +737,6 @@ $$
 
 ---
 
-
 ![h:500px center](./images/02_beam_search.png)
 Source: [Huggingface's Beam Search Visualizer](https://huggingface.co/spaces/m-ric/beam_search_visualizer).
 
@@ -752,11 +747,11 @@ Source: [Huggingface's Beam Search Visualizer](https://huggingface.co/spaces/m-r
 + To select the best output, one option is to select the one with the highest probability:
 
 $$
-p(I love food) = p(I) \times p(love|I) \times p(food|I, love)
+p(I\ love\ food) = p(I) \times p(love|I) \times p(food|I, love)
 $$
 + Equivalently, in logprobs:
 $$
-logprob(I love food) = logprob(I) + logprob(love|I) + logprob(food|I, love)
+logprob(I\ love\ food) = logprob(I) + logprob(love|I) + logprob(food|I, love)
 $$
 + To avoid biasing the selection towards short phrases, we can use the average logprobs by dividing the previous equation by the number of tokens.
 + The less robust a model is, the more we can benefit from repeated outputs. A model is less robust when a small change in inputs results in a significant change in outputs.
@@ -789,7 +784,7 @@ $$
 + This probabilistic nature can cause:
 
   - Inconsistencies: a model generates very different responses for the same or slightly different prompts.
-  - Hallucinations: a model gives a reponse that isn't grounded in facts.
+  - Hallucinations: a model gives a response that isn't grounded in facts.
 
 + Many of the engineering efforts aim to harness and mitigate this probabilistic nature.
 
@@ -821,52 +816,63 @@ Model inconsistencies happen in two scenarios:
 ## Hallucinations
 
 + Hallucinations are fatal for factuality.
-+ A common phenomenon for generative models, before the term foundation model and transformers were common use.
++ A common phenomenon for generative models, predating the widespread use of the terms "foundation model" and "transformer."
 
 ---
 
-## Two Hypothesis for Hallucinations
+## Two Hypotheses for Hallucinations
 
 - A model hallucinates because it cannot differentiate between the data it has seen during training and the data that it produces.
 
-  + Snowballing hallucinations: This can happen when a model makes an incorrect assumption and continues to hallucinating to justify this initial error. 
+  + Snowballing hallucinations: this can happen when a model makes an incorrect assumption and continues hallucinating to justify the initial error.
 
-- Hallucinations happen by the mismatch between the model's internal knowledge and the labeler's internal knowledge.
+- Hallucinations happen due to a mismatch between the model's internal knowledge and the labeler's internal knowledge.
 
-  + When a labeler has better knowledge about a subject, knowledge that is not present in the model, and embeds it in the SFT process, we are teaching the model to hallucinate.
+  + When a labeler has better knowledge about a subject than the model and embeds it in the SFT process, we are teaching the model to hallucinate.
 
 ---
 
 ## Strategies
 
-+ Verification: require from the model to produce the sources that it used to create the response.
++ Verification: require the model to produce the sources it used to create the response.
 + Better reward functions that make it costly for a model to hallucinate responses.
 
+---
+
+## The Shoggoth Problem
+
+> Shoggoth is a potent metaphor that encapsulates one of the most bizarre facts about the A.I. world, which is that many of the people working on this technology are somewhat mystified by their own creations. They don't fully understand the inner workings of A.I. language models, how they acquire new abilities or why they behave unpredictably at times. They aren't totally sure if A.I. is going to be net-good or net-bad for the world. [(Roose, 2023)](https://www.nytimes.com/2023/05/30/technology/shoggoth-meme-ai.html)
+
+Many of the engineering efforts covered in this course exist precisely because we cannot fully explain or predict model behaviour.
 
 ---
 
-## AI Engineering and the Shoggoth
+## The Shoggoth
+
+![height:450px center](images/02_shoggoth.png)
 
 ---
 
-## If you squint...
-
-![bg contain right:60%](./images/02_pretraining_sft_rlhf.png)
-> If you squint [this figure] looks very similar to the meme depicting the monster Shoggoth. (Huyen, 2025)
+# Main Points
 
 ---
 
+## Main Points
 
-
->Shoggoth is a potent metaphor that encapsulates one of the most bizarre facts about the A.I. world, which is that many of the people working on this technology are somewhat mystified by their own creations. They don’t fully understand the inner workings of A.I. language models, how they acquire new abilities or why they behave unpredictably at times. They aren’t totally sure if A.I. is going to be net-good or net-bad for the world. [(Roose, 2023)](https://www.nytimes.com/2023/05/30/technology/shoggoth-meme-ai.html)
-
-![bg contain right:40%](./images/02_shoggoth.png)
-
-
-
+1. Foundation models are trained on massive datasets via self-supervision; scale (parameters, training tokens, compute) drives capability.
+2. The Transformer architecture, built on self-attention, replaced RNNs and enabled parallelized training at scale.
+3. Post-training (SFT + preference fine-tuning) aligns foundation models to produce useful, safe, and well-formatted outputs.
+4. Model outputs are probabilistic: temperature, top-k, and top-p sampling control the creativity/consistency trade-off.
 
 ---
 
+## Main Points (cont.)
+
+5. Hallucinations and inconsistencies are structural properties of probabilistic models, not simple bugs.
+6. Scaling laws (Chinchilla) show that parameters, training tokens, and compute must be balanced; more parameters alone is not sufficient.
+7. Training data quality and provenance directly determine model capabilities and failure modes.
+
+---
 
 # References
 
@@ -875,27 +881,21 @@ Model inconsistencies happen in two scenarios:
 ## References
 
 - Bommasani, Rishi, et al. "On the opportunities and risks of foundation models." [arXiv:2108.07258](https://arxiv.org/abs/2108.07258) (2021).
-- Dodge, Jesse et al. “Documenting the English Colossal Clean Crawled Corpus.” [arXiv:2104.08758](https://arxiv.org/abs/2104.08758) (2021).
-- Huyen, Chip. Designing machine learning systems. O'Reilly Media, Inc., 2022 
-- Baack, Stefan, and Mozilla Insights. "Training data for the price of a sandwich." Retrieved May 9 (2024): 2024. [(URL)](https://www.mozillafoundation.org/en/research/library/generative-ai-training-data/common-crawl/)
+- Baack, Stefan, and Mozilla Insights. "Training data for the price of a sandwich." (2024). [(URL)](https://www.mozillafoundation.org/en/research/library/generative-ai-training-data/common-crawl/)
+- Dodge, Jesse et al. "Documenting the English Colossal Clean Crawled Corpus." [arXiv:2104.08758](https://arxiv.org/abs/2104.08758) (2021).
 - Hoffmann, Jordan, et al. "Training compute-optimal large language models." [arXiv:2203.15556](https://arxiv.org/abs/2203.15556) (2022).
-
+- Howard, Jeremy, and Sebastian Ruder. "Universal language model fine-tuning for text classification." [arXiv:1801.06146](https://arxiv.org/abs/1801.06146) (2018).
+- Huyen, Chip. AI engineering: Building applications with foundation models. O'Reilly Media, Inc., 2024.
+- Huyen, Chip. Designing machine learning systems. O'Reilly Media, Inc., 2022.
 
 ---
 
 ## References (cont.)
 
+- Jones, Elliott. "Foundation models in the public sector." Ada Lovelace Institute, October 2023.
 - Olah, Chris. Understanding LSTM Networks. [(colah.github.io, 2015)](https://colah.github.io/posts/2015-08-Understanding-LSTMs/)
 - Ouyang, Long, et al. "Training language models to follow instructions with human feedback." Advances in neural information processing systems 35 (2022): 27730-27744. [(URL)](https://arxiv.org/abs/2203.02155)
 - Roose, Kevin. "Why an octopus-like creature has come to symbolize the state of AI." The New York Times (2023). [(URL)](https://www.nytimes.com/2023/05/30/technology/shoggoth-meme-ai.html)
-- Schaul, Kevin, et al. Inside the secret list of websites that make AI like ChatGPT sound smart. Washington Post: April 19, 2023 [(URL)](https://www.washingtonpost.com/technology/interactive/2023/ai-chatbot-learning/).
-
-
----
-
-## References (cont.)
-
-- Vaswani, Ashish et al. "Attention is all you need." Advances in neural information processing systems 30.  [arXiv:1706.03762](https://arxiv.org/abs/1706.03762)(2017). 
-- Jones, Elliott. "Foundation models in the public sector." Ada Lovelace Institute, October. Accessed August 30,2025: 2023.
-- Tunstall, Lewis, Leandro Von Werra, and Thomas Wolf. Natural language processing with transformers. "O'Reilly Media, Inc.", 2022.
-- Howard, Jeremy, and Sebastian Ruder. "Universal language model fine-tuning for text classification." [arXiv:1801.06146](https://arxiv.org/abs/1801.06146) (2018). 
+- Schaul, Kevin, et al. "Inside the secret list of websites that make AI like ChatGPT sound smart." Washington Post, April 19, 2023. [(URL)](https://www.washingtonpost.com/technology/interactive/2023/ai-chatbot-learning/)
+- Tunstall, Lewis, Leandro Von Werra, and Thomas Wolf. Natural language processing with transformers. O'Reilly Media, Inc., 2022.
+- Vaswani, Ashish et al. "Attention is all you need." Advances in neural information processing systems 30. [arXiv:1706.03762](https://arxiv.org/abs/1706.03762) (2017).

@@ -19,7 +19,25 @@ $ echo "Data Sciences Institute"
 ```
 ---
 
-# Introduction
+# Main Points
+
+---
+
+## Main Points
+
+1. AI systems adapt pre-trained foundation models to specific tasks rather than training from scratch.
+2. Foundation models emerged from language models via self-supervision, enabling massive scale without costly data labeling.
+3. AI engineering is primarily about **adaptation** (prompt engineering and fine-tuning), not model training.
+4. Planning an AI product requires explicit quality, latency, and cost metrics — and must account for the last-mile challenge.
+
+---
+
+## Main Points (cont.)
+
+
+5. Human-in-the-loop design is a deliberate choice: define where humans must stay involved vs. where automation can take over.
+6. The AI stack has three layers: Application Development, Model Development, and Infrastructure.
+7. Competitive advantage in AI rests on **data and distribution**, not technology alone.
 
 ---
 
@@ -74,7 +92,7 @@ We will be covering Chapter 1 of AI Engineering, by Chip Huyen.
 ## Reference Process Flow
 
 ![h:500px center](./images/02_foundation_model.png)
-<center>(Bommasani et al, 2025)</center>
+<center>(Bommasani et al, 2021)</center>
 
 ---
 
@@ -88,11 +106,17 @@ We will be covering Chapter 1 of AI Engineering, by Chip Huyen.
 
 ---
 
-![height:600px center](./images/01_artificial-intelligence-parameter-count.png)
+## AI Model Scale: Parameter Count
+
+![height:500px center](./images/01_artificial-intelligence-parameter-count.png)
+<center>Source: Epoch AI (2026) – with major processing by Our World in Data</center>
 
 ---
 
-![height:600px center](./images/01_artificial-intelligence-number-training-datapoints.png)
+## AI Model Scale: Training Data
+
+![height:500px center](./images/01_artificial-intelligence-number-training-datapoints.png)
+<center>Source: Epoch AI (2026) – with major processing by Our World in Data</center>
 
 ---
 
@@ -143,7 +167,7 @@ There are two types of Language Models (LM): Autoregressive LM and Masked LM.
 ---
 ## Masked Language Models
 
-+ Masked language model: predicts missing tokens anywhere in a sequence using only the preceding tokens.
++ Masked language model: predicts masked (hidden) tokens in a sequence using both preceding and following context (bidirectional).
 + Commonly used for non-generative tasks such as sentiment analysis, text classification, and tasks that require an understanding of the general context (before and after the prediction), such as code debugging.
 + Example, BERT ([Devlin et al., 2018](https://arxiv.org/abs/1810.04805)).
 
@@ -172,7 +196,7 @@ There are two types of Language Models (LM): Autoregressive LM and Masked LM.
 
 ## Completion Tasks
 
-Many tasks can be thought as completion: translation, summarization, coding, and solving math problems. 
+Many tasks can be thought of as completion: translation, summarization, coding, and solving math problems.
 
 
 > What’s common to all of these visions is something we call the “sandwich” workflow. This is a three-step process. First, a human has a creative impulse, and gives the AI a prompt. The AI then generates a menu of options. The human then chooses an option, edits it, and adds any touches they like. ([Smith, 2020](https://www.noahpinion.blog/p/generative-ai-autocomplete-for-everything)).
@@ -218,7 +242,7 @@ Input | Output (next token)
 ---
 
 
-# Foundation model use cases
+# Foundation Model Use Cases
 
 - Coding
 - Image and Video Production
@@ -248,16 +272,13 @@ Input | Output (next token)
 
 ---
 
-## Why are we doing this?
+## Motivation for AI Adoption
 
-+ If you do not do this, competitors with AI can make you obsolete.
++ Competitive pressure: organizations that deploy AI in information-intensive domains (financial analysis, insurance, data processing) can reduce costs and accelerate output, making slower competitors obsolete.
 
-  - Common for business involving information processing and aggregation.
-  - Financial analysis, insurance, and data processing.
++ Productivity opportunity: AI can automate or augment repetitive cognitive tasks, compounding gains across an organization.
 
-+ If you do not do this, you will miss opportunities to boost profits and productivity.
-
-+ You are unsure where AI will fit into your business yet, but you don't want to be left behind.
++ Strategic uncertainty: many organizations are unsure where AI fits, but delaying evaluation carries its own risk as the technology matures.
 
 ---
 
@@ -308,7 +329,7 @@ Input | Output (next token)
 
 # The Crawl-Walk-Run Model
 
-[Microsoft (2023)](https://www.microsoft.com/en-us/industry/blog/retail/2023/10/23/from-discussion-to-deployment-4-key-lessons-in-generative-ai/) proposed a framework for adoption of AI automation in products:
+A practical framework for gradual AI automation adoption ([Guy, 2023](https://www.microsoft.com/en-us/industry/blog/retail/2023/10/23/from-discussion-to-deployment-4-key-lessons-in-generative-ai/)):
 
 1. Crawl: human involvement is mandatory.
 2. Walk: AI can directly interact with internal users.
@@ -347,7 +368,7 @@ To ensure a product is not put in front of users before it is ready:
 
 ## Milestone Planning
 
-- The stronger off-the shelf models, the less work you will have to do.
+- The stronger the off-the-shelf models, the less work you will have to do.
 - Planning an AI product must account for the last mile challenge: 
   
   + Initial success with foundation models can be misleading. 
@@ -470,7 +491,7 @@ Illustration from ["The Rise of the AI Engineer" (Wang, 2023)](https://www.laten
 ## AI Engineering vs Full-Stack Engineering
 
 + Focus on application development, especially on interfaces, brings AI closer to full-stack engineering. 
-+ ML engineering is Python-centric. There is an emergence of JavaScript APIs for AI: LangChain.js, Transformer.js, OpenAI's Node library, Vercel's AI SDK.
++ ML engineering is Python-centric. The emergence of JavaScript-native AI APIs means AI engineering increasingly overlaps with full-stack web development.
 ---
 
 ## AI Engineering and Application Development
@@ -481,6 +502,27 @@ Illustration from ["The Rise of the AI Engineer" (Wang, 2023)](https://www.laten
 
 ---
 
+# Main Points
+
+---
+
+## Main Points
+
+1. AI systems adapt pre-trained foundation models to specific tasks rather than training from scratch.
+2. Foundation models emerged from language models via self-supervision, enabling massive scale without costly data labeling.
+3. AI engineering is primarily about **adaptation** (prompt engineering and fine-tuning), not model training.
+4. Planning an AI product requires explicit quality, latency, and cost metrics — and must account for the last-mile challenge.
+
+---
+
+## Main Points (cont.)
+
+
+5. Human-in-the-loop design is a deliberate choice: define where humans must stay involved vs. where automation can take over.
+6. The AI stack has three layers: Application Development, Model Development, and Infrastructure.
+7. Competitive advantage in AI rests on **data and distribution**, not technology alone.
+
+---
 
 # References
 
