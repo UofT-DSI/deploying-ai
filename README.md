@@ -128,19 +128,20 @@ Participants are encouraged to engage actively during the learning module. The k
 
 |Type |Date        |Topic                             |
 |-----|------------|----------------------------------|
-|Live| June 17 | Introduction to AI Engineering|
+|Live| June 17 | 1. Introduction to AI Engineering and Foundation Models|
 |Work| June 19 | Work Period |
-|Live| June 22 | Introduction to Foundation Models |
-|Live| June 24 | Evaluating Foundation Models |
+|Live| June 22 | 2. Evaluating Foundation Models |
+|Live| June 24 | 3. Prompt Engineering |
 |Work| June 26 | Work Period |
-|Deadline| June 29 | Assignment 1 Due |
-|Live| July 3 | Prompt Engineering |
-|Live| July 6 | Retrieval Augmented Generation |
-|Live| July 8 | Agents |
+|Deadline| June 28 | Assignment 1 Due |
+|Live| June 29 | 4. Retrieval Augmented Generation |
+|Work| July 3 | Work Period |
+|Live| July 6 | 5.  Agents |
+|Live| July 8 | 6.  Fine Tuning and Data Set Engineering |
 |Work| July 10 | Work Period |
-|Deadline| July 13 | Assignment 2 Due |
-|Live| July 13 | Fine Tuning |
-|Live| July 17 | Dataset Engineering |
+|Deadline| July 12 | Assignment 2 Due |
+|Live| July 13 | 7.  Optimization |
+
 
 
 
