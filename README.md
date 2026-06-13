@@ -141,6 +141,7 @@ Participants are encouraged to engage actively during the learning module. The k
 |Work| July 10 | Work Period |
 |Deadline| July 12 | Assignment 2 Due |
 |Live| July 13 | 7.  Optimization |
+|Work| July 17 | Work Period |
 
 
 
