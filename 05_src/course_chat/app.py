@@ -21,7 +21,6 @@ def course_chat(message: str, history: list[dict]) -> str:
 
 chat = gr.ChatInterface(
     fn=course_chat,
-    type="messages"
 )
 
 if __name__ == "__main__":
