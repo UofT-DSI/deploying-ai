@@ -1,36 +1,23 @@
-from course_chat.main import get_graph
-from langchain_core.messages import HumanMessage, AIMessage
+from course_chat.main import get_agent
 import gradio as gr
 from dotenv import load_dotenv
-import os
 
 from utils.logger import get_logger
 
 _logs = get_logger(__name__)
 
-llm = get_graph()
+load_dotenv(".secrets")
 
-load_dotenv('.secrets')
+agent = get_agent()
+
 
 def course_chat(message: str, history: list[dict]) -> str:
-    langchain_messages = []
-    n = 0
-    _logs.debug(f"History: {history}")
-    for msg in history:
-        if msg['role'] == 'user':
-            langchain_messages.append(HumanMessage(content=msg['content']))
-        elif msg['role'] == 'assistant':
-            langchain_messages.append(AIMessage(content=msg['content']))
-            n += 1
-    langchain_messages.append(HumanMessage(content=message))
+    messages = [(msg["role"], msg["content"]) for msg in history]
+    messages.append(("user", message))
+    _logs.debug(f"Invoking agent with {len(messages)} messages")
+    result = agent.invoke({"messages": messages})
+    return result["messages"][-1].content
 
-    state = {
-        "messages": langchain_messages,
-        "llm_calls": n
-    }
-
-    response = llm.invoke(state)
-    return response['messages'][len(response['messages']) - 1].content
 
 chat = gr.ChatInterface(
     fn=course_chat,
@@ -38,5 +25,5 @@ chat = gr.ChatInterface(
 )
 
 if __name__ == "__main__":
-    _logs.info('Starting Course Chat App...')
+    _logs.info("Starting Course Chat App...")
     chat.launch()

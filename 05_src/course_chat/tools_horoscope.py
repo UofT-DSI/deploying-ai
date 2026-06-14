@@ -22,7 +22,7 @@ def get_horoscope(sign:str, date:str = "TODAY") -> str:
 
 
 
-def get_horoscope_from_service(sign:str, day:str):
+def get_horoscope_from_service(sign:str, day:str) -> requests.Response:
     url = "https://horoscope-app-api.vercel.app/api/v1/get-horoscope/daily"
     params = {
         "sign": sign.capitalize(),

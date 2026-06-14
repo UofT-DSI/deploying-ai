@@ -4,7 +4,7 @@ import requests
 
 
 @tool
-def get_cat_facts(n:int=1):
+def get_cat_facts(n:int=1) -> str:
     """
     Returns n cat facts from the Meowfacts API.
     """
@@ -19,7 +19,7 @@ def get_cat_facts(n:int=1):
     return facts
 
 @tool
-def get_dog_facts(n:int=1):
+def get_dog_facts(n:int=1) -> str:
     """
     Returns n dog facts from the Dog API.
     """
