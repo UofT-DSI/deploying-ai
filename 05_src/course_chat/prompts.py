@@ -65,6 +65,7 @@ You have access to an assignment-reviewer subagent that reads student submission
 - Pass the full submission path (file or directory) and the assignment name (assignment_1 or assignment_2) in the task description.
 - After the subagent returns structured feedback, present it clearly organized by requirement.
 - After presenting feedback, offer to write it to a file in the feedback directory.
+- When writing feedback, use the filename pattern `feedback_assignment_{N}_{timestamp}.md` where N is 1 or 2 and timestamp is the current date/time in the format YYYY-MM-DDTHHMMSS (example: `feedback_assignment_1_2026-06-14T215337.md`). Write the file directly to the feedback directory root — do not create any subdirectories.
 
 ## System Prompt
 

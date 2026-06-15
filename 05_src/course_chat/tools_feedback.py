@@ -5,6 +5,7 @@ The actual file write is handled by the FilesystemBackend write tool (provided
 by create_deep_agent) and is gated by FilesystemPermission(mode="interrupt").
 This module provides path helpers and a markdown formatter used by the parent agent.
 """
+from datetime import datetime
 from pathlib import Path
 from utils.logger import get_logger
 
@@ -22,30 +23,19 @@ except OSError as exc:
 STATUS_ICONS = {"complete": "✅", "partial": "⚠️", "missing": "❌"}
 
 
-def feedback_path(assignment: str, version: int = 1) -> Path:
-    """Return the canonical path for an assignment feedback file.
+def timestamped_feedback_path(assignment_number: int) -> Path:
+    """Return a timestamped path for an assignment feedback file.
 
-    version=1 → <assignment>-feedback.md
-    version>1 → <assignment>-feedback-v<version>.md
+    Pattern: FEEDBACK_DIR/feedback_assignment_{1|2}_{YYYY-MM-DDTHHMMSS}.md
+    Example: feedback_assignment_1_2026-06-14T215337.md
+
+    Colons are omitted from the time portion — they are illegal in Windows filenames.
     """
-    if version == 1:
-        return FEEDBACK_DIR / f"{assignment}-feedback.md"
-    return FEEDBACK_DIR / f"{assignment}-feedback-v{version}.md"
-
-
-def next_available_path(assignment: str) -> Path:
-    """Return the lowest-numbered path that does not yet exist."""
-    for version in range(1, 100):
-        candidate = feedback_path(assignment, version)
-        if not candidate.exists():
-            _logs.debug("next_available_path: selected %s", candidate)
-            return candidate
-    _logs.warning("next_available_path: hit version limit for assignment=%s, overwriting v99", assignment)
-    return feedback_path(assignment, 99)
-
-
-def feedback_file_exists(path: Path) -> bool:
-    return path.exists()
+    ts = datetime.now().strftime("%Y-%m-%dT%H%M%S")
+    name = f"feedback_assignment_{assignment_number}_{ts}.md"
+    path = FEEDBACK_DIR / name
+    _logs.debug("timestamped_feedback_path: %s", path)
+    return path
 
 
 def format_feedback_as_markdown(feedback: AssignmentFeedback) -> str:

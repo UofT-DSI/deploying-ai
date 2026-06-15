@@ -23,7 +23,7 @@ tools = [get_cat_facts, get_dog_facts, recommend_albums, get_horoscope]
 
 _feedback_permission = FilesystemPermission(
     operations=["write"],
-    paths=["/"],
+    paths=[str(FEEDBACK_DIR)],
     mode="interrupt",
 )
 
@@ -38,7 +38,7 @@ def get_agent(extra_tools: list | None = None) -> CompiledStateGraph:
         tools=all_tools,
         subagents=[course_rag_subagent, reviewer_subagent],
         permissions=[_feedback_permission],
-        backend=FilesystemBackend(root_dir=str(FEEDBACK_DIR), virtual_mode=True),
+        backend=FilesystemBackend(root_dir=str(FEEDBACK_DIR), virtual_mode=False),
         checkpointer=MemorySaver(),
         system_prompt=return_instructions(),
     )
