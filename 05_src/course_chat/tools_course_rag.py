@@ -1,0 +1,72 @@
+from langchain.tools import tool
+from deepagents import SubAgent
+import chromadb
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from dotenv import load_dotenv
+from utils.logger import get_logger
+import os
+
+_logs = get_logger(__name__)
+load_dotenv()
+load_dotenv(".secrets")
+
+_COLLECTION_NAME = "course_material"
+
+
+def _get_collection() -> chromadb.api.models.Collection:
+    chroma = chromadb.HttpClient(host=os.getenv("CHROMA_URL", "localhost"))
+    return chroma.get_collection(
+        name=_COLLECTION_NAME,
+        embedding_function=OpenAIEmbeddingFunction(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            model_name="text-embedding-3-small",
+        ),
+    )
+
+
+@tool
+def query_course_material(query: str, n_results: int = 5) -> list[dict]:
+    """Searches the course material index for content relevant to the query.
+    Returns a list of {source, type, title, content} dicts.
+    Use this for questions about course notebooks, slides, or assignment descriptions."""
+    try:
+        collection = _get_collection()
+    except Exception as e:
+        _logs.error(f"course_material collection unavailable: {e}")
+        return [{"error": "Course material not indexed. Run index_course_material.py first."}]
+
+    results = collection.query(query_texts=[query], n_results=n_results)
+    chunks = []
+    for idx in range(len(results["ids"][0])):
+        meta = dict(results["metadatas"][0][idx])
+        chunks.append({
+            "source": meta.get("source", "unknown"),
+            "type": meta.get("type", "unknown"),
+            "title": meta.get("title", "unknown"),
+            "content": results["documents"][0][idx],
+        })
+    _logs.debug(f"query_course_material: {len(chunks)} results for '{query}'")
+    return chunks
+
+
+_SYSTEM_PROMPT = """You are a course content retrieval assistant for a Deploying AI course.
+
+When you receive a question:
+1. Call query_course_material with the user's question as the query.
+2. Review the returned excerpts and identify the most relevant ones.
+3. Format your answer with source attribution for each excerpt.
+
+Attribution format: cite as (source: <file_path>, section: <title>).
+
+If the results do not contain relevant information, say so clearly — do not hallucinate content."""
+
+
+course_rag_subagent: SubAgent = {
+    "name": "course-rag",
+    "description": (
+        "Retrieves relevant excerpts from indexed course material: "
+        "lab notebooks, markdown slides, and assignment descriptions."
+    ),
+    "system_prompt": _SYSTEM_PROMPT,
+    "tools": [query_course_material],
+}
