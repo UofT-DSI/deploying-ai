@@ -17,17 +17,25 @@ import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from dotenv import load_dotenv
 
+from utils.logger import get_logger
+
 load_dotenv()
 load_dotenv(".secrets")
+
+_logs = get_logger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Source directories: (doc_type, base_dir, glob_pattern)
 SOURCES = [
-    ("notebook", REPO_ROOT / "01_materials" / "labs", "*.ipynb"),
-    ("slide",    REPO_ROOT / "03_instructional_team" / "markdown_slides", "*.md"),
-    ("assignment", REPO_ROOT / "02_activities", "*.ipynb"),
-    ("assignment", REPO_ROOT / "02_activities", "*.md"),
+    ("notebook",   REPO_ROOT / "01_materials" / "labs",                        "*.ipynb"),
+    ("slide",      REPO_ROOT / "03_instructional_team" / "markdown_slides",    "*.md"),
+    ("assignment", REPO_ROOT / "02_activities",                                "*.ipynb"),
+    ("assignment", REPO_ROOT / "02_activities",                                "*.md"),
+    ("source",     REPO_ROOT / "05_src" / "course_chat",                       "*.py"),
+    ("source",     REPO_ROOT / "05_src" / "music_mcp",                        "*.py"),
+    ("source",     REPO_ROOT / "05_src" / "static_mcp",                       "*.py"),
+    ("source",     REPO_ROOT / "05_src" / "static_weather_mcp",               "*.py"),
 ]
 
 COLLECTION_NAME = "course_material"
@@ -71,6 +79,42 @@ def _chunk_notebook(path: Path, rel_path: str, doc_type: str) -> list[dict]:
         if buf.strip():
             chunks.append({"id": f"{rel_path}:{cell_idx}:{sub}",
                            "text": buf.strip(), "metadata": base_meta})
+    return chunks
+
+
+def _chunk_python(path: Path, rel_path: str, doc_type: str) -> list[dict]:
+    """Split Python source into function/class-level chunks."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.split("\n")
+    chunks: list[dict] = []
+    block_lines: list[str] = []
+    block_heading = path.stem
+    block_start = 0
+
+    for i, line in enumerate(lines):
+        is_def = line.startswith(("def ", "class ", "async def "))
+        if is_def and block_lines:
+            content = "\n".join(block_lines).strip()
+            if len(content) >= MIN_CHUNK_CHARS:
+                chunks.append({
+                    "id": f"{rel_path}:{block_start}:0",
+                    "text": content[:MAX_CHUNK_CHARS],
+                    "metadata": {"source": rel_path, "type": doc_type, "title": block_heading},
+                })
+            block_heading = line.strip()
+            block_start = i
+            block_lines = [line]
+        else:
+            block_lines.append(line)
+
+    if block_lines:
+        content = "\n".join(block_lines).strip()
+        if len(content) >= MIN_CHUNK_CHARS:
+            chunks.append({
+                "id": f"{rel_path}:{block_start}:0",
+                "text": content[:MAX_CHUNK_CHARS],
+                "metadata": {"source": rel_path, "type": doc_type, "title": block_heading},
+            })
     return chunks
 
 
@@ -131,6 +175,8 @@ def main() -> None:
             chunks = (
                 _chunk_notebook(path, rel, doc_type)
                 if path.suffix == ".ipynb"
+                else _chunk_python(path, rel, doc_type)
+                if path.suffix == ".py"
                 else _chunk_markdown(path, rel, doc_type)
             )
             print(f"  {rel}: {len(chunks)} chunks")
