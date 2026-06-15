@@ -163,12 +163,12 @@ def main() -> None:
             model_name=EMBEDDING_MODEL,
         ),
     )
-    print(f"Collection '{COLLECTION_NAME}' ready (existing docs: {collection.count()})\n")
+    _logs.info(f"Collection '{COLLECTION_NAME}' ready (existing docs: {collection.count()})")
 
     all_chunks: list[dict] = []
     for doc_type, base_dir, pattern in SOURCES:
         if not base_dir.exists():
-            print(f"  [skip] {base_dir} not found")
+            _logs.warning(f"[skip] {base_dir} not found")
             continue
         for path in sorted(base_dir.glob(pattern)):
             rel = str(path.relative_to(REPO_ROOT)).replace("\\", "/")
@@ -179,14 +179,14 @@ def main() -> None:
                 if path.suffix == ".py"
                 else _chunk_markdown(path, rel, doc_type)
             )
-            print(f"  {rel}: {len(chunks)} chunks")
+            _logs.info(f"{rel}: {len(chunks)} chunks")
             all_chunks.extend(chunks)
 
     if not all_chunks:
-        print("\nNo chunks found to index.")
+        _logs.error("No chunks found to index.")
         sys.exit(1)
 
-    print(f"\nUpserting {len(all_chunks)} chunks in batches of {BATCH_SIZE}...")
+    _logs.info(f"Upserting {len(all_chunks)} chunks in batches of {BATCH_SIZE}...")
     for start in range(0, len(all_chunks), BATCH_SIZE):
         batch = all_chunks[start : start + BATCH_SIZE]
         collection.upsert(
@@ -194,9 +194,9 @@ def main() -> None:
             documents=[c["text"] for c in batch],
             metadatas=[c["metadata"] for c in batch],
         )
-        print(f"  [{start + len(batch)}/{len(all_chunks)}] upserted")
+        _logs.info(f"[{start + len(batch)}/{len(all_chunks)}] upserted")
 
-    print(f"\nDone. Total documents in '{COLLECTION_NAME}': {collection.count()}")
+    _logs.info(f"Done. Total documents in '{COLLECTION_NAME}': {collection.count()}")
 
 
 if __name__ == "__main__":
