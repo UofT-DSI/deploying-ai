@@ -15,7 +15,7 @@ _logs = get_logger(__name__)
 load_dotenv()
 load_dotenv(".secrets")
 
-_collection: chromadb.api.models.Collection | None = None
+_collection: chromadb.api.models.Collection
 _rerank_llm = None
 
 
