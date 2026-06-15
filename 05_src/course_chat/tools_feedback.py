@@ -6,11 +6,18 @@ by create_deep_agent) and is gated by FilesystemPermission(mode="interrupt").
 This module provides path helpers and a markdown formatter used by the parent agent.
 """
 from pathlib import Path
+from utils.logger import get_logger
 
 from course_chat.tools_assignment_reviewer import AssignmentFeedback, RequirementCheck
 
+_logs = get_logger(__name__)
+
 FEEDBACK_DIR: Path = Path(__file__).resolve().parent / "feedback"
-FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
+except OSError as exc:
+    _logs.error("tools_feedback: could not create FEEDBACK_DIR %s: %s", FEEDBACK_DIR, exc)
+    raise
 
 STATUS_ICONS = {"complete": "✅", "partial": "⚠️", "missing": "❌"}
 
@@ -31,7 +38,9 @@ def next_available_path(assignment: str) -> Path:
     for version in range(1, 100):
         candidate = feedback_path(assignment, version)
         if not candidate.exists():
+            _logs.debug("next_available_path: selected %s", candidate)
             return candidate
+    _logs.warning("next_available_path: hit version limit for assignment=%s, overwriting v99", assignment)
     return feedback_path(assignment, 99)
 
 
@@ -41,6 +50,11 @@ def feedback_file_exists(path: Path) -> bool:
 
 def format_feedback_as_markdown(feedback: AssignmentFeedback) -> str:
     """Render an AssignmentFeedback Pydantic object as a markdown document."""
+    _logs.debug(
+        "format_feedback_as_markdown: assignment=%s checks=%d",
+        feedback.assignment,
+        len(feedback.checks),
+    )
     lines = [
         f"# Assignment Feedback: {feedback.assignment.replace('_', ' ').title()}",
         "",

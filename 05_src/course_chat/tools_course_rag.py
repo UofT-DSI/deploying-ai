@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from utils.logger import get_logger
 import os
 
+from course_chat.chroma_utils import parse_chroma_results
+
 _logs = get_logger(__name__)
 load_dotenv()
 load_dotenv(".secrets")
@@ -29,23 +31,24 @@ def query_course_material(query: str, n_results: int = 5) -> list[dict]:
     """Searches the course material index for content relevant to the query.
     Returns a list of {source, type, title, content} dicts.
     Use this for questions about course notebooks, slides, or assignment descriptions."""
+    _logs.debug("query_course_material: query=%r n_results=%d", query, n_results)
     try:
         collection = _get_collection()
     except Exception as e:
-        _logs.error(f"course_material collection unavailable: {e}")
+        _logs.error("course_material collection unavailable: %s", e)
         return [{"error": "Course material not indexed. Run index_course_material.py first."}]
 
     results = collection.query(query_texts=[query], n_results=n_results)
-    chunks = []
-    for idx in range(len(results["ids"][0])):
-        meta = dict(results["metadatas"][0][idx])
-        chunks.append({
-            "source": meta.get("source", "unknown"),
-            "type": meta.get("type", "unknown"),
-            "title": meta.get("title", "unknown"),
-            "content": results["documents"][0][idx],
-        })
-    _logs.debug(f"query_course_material: {len(chunks)} results for '{query}'")
+    chunks = [
+        {
+            "source": item.get("source", "unknown"),
+            "type": item.get("type", "unknown"),
+            "title": item.get("title", "unknown"),
+            "content": item["document"],
+        }
+        for item in parse_chroma_results(results)
+    ]
+    _logs.debug("query_course_material: %d results for '%s'", len(chunks), query)
     return chunks
 
 

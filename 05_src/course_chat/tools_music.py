@@ -1,5 +1,4 @@
 from langchain.tools import tool
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import SystemMessage, HumanMessage
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
@@ -9,35 +8,35 @@ from utils.logger import get_logger
 import os
 import json
 
+from course_chat.llm_factory import make_llm
+from course_chat.chroma_utils import parse_chroma_results
+
 _logs = get_logger(__name__)
 load_dotenv()
 load_dotenv(".secrets")
 
-_GATEWAY_URL = "https://k7uffyg03f.execute-api.us-east-1.amazonaws.com/prod/openai/v1"
-_USE_GATEWAY = os.getenv("USE_GATEWAY", "true").lower() != "false"
+_collection: chromadb.api.models.Collection | None = None
+_rerank_llm = None
 
 
-def _make_llm(model_id: str):
-    if _USE_GATEWAY:
-        return init_chat_model(
-            model_id,
-            base_url=_GATEWAY_URL,
-            api_key="any value",
-            default_headers={"x-api-key": os.getenv("API_GATEWAY_KEY")},
+def _init_music_tools() -> None:
+    global _collection, _rerank_llm
+    try:
+        chroma = chromadb.HttpClient(host=os.getenv("CHROMA_URL"))
+        _collection = chroma.get_collection(
+            name="pitchfork_reviews",
+            embedding_function=OpenAIEmbeddingFunction(
+                api_key=os.getenv("OPENAI_API_KEY"),
+                model_name="text-embedding-3-small",
+            ),
         )
-    return init_chat_model(model_id)
+        _rerank_llm = make_llm("openai:gpt-4o-mini")
+        _logs.info("tools_music: initialized successfully")
+    except Exception as exc:
+        _logs.error("tools_music: initialization failed — music tool unavailable: %s", exc)
 
-chroma = chromadb.HttpClient(host=os.getenv("CHROMA_URL"))
-collection = chroma.get_collection(
-    name="pitchfork_reviews",
-    embedding_function=OpenAIEmbeddingFunction(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        model_name="text-embedding-3-small"
-    )
-)
 
-_rerank_llm = _make_llm("openai:gpt-4o-mini")
-_logs.info(f"tools_music: USE_GATEWAY={_USE_GATEWAY}")
+_init_music_tools()
 
 
 class MusicReviewData(BaseModel):
@@ -63,54 +62,57 @@ def get_context_data(
     if where:
         kwargs["where"] = where
     results = collection.query(**kwargs)
-    context_data = []
-    for idx in range(len(results["ids"][0])):
-        details = dict(results["metadatas"][0][idx])
-        details["text"] = results["documents"][0][idx]
-        context_data.append(details)
-    return context_data
+    items = parse_chroma_results(results)
+    for item in items:
+        item["text"] = item.pop("document")
+    return items
+
+
+def _format_candidates(context_data: list[dict]) -> str:
+    lines = []
+    for i, c in enumerate(context_data):
+        snippet = c.get("text", "")[:200].replace("\n", " ")
+        lines.append(
+            f"[{i}] Artist: {c.get('artist', 'N/A')}, "
+            f"Album: {c.get('album', 'N/A')}, "
+            f"Score: {c.get('score', 'N/A')}, "
+            f"Genre: {c.get('genre', 'N/A')}\n"
+            f"    Excerpt: {snippet}"
+        )
+    return "\n\n".join(lines)
+
+
+def _parse_rank_indices(raw: str, n_candidates: int) -> list[int]:
+    start = raw.find("[")
+    end = raw.rfind("]") + 1
+    indices = json.loads(raw[start:end])
+    valid = [i for i in indices if isinstance(i, int) and 0 <= i < n_candidates]
+    seen: set[int] = set()
+    return [i for i in valid if not (i in seen or seen.add(i))]
 
 
 def llm_rerank(context_data: list[dict], query: str, top_k: int = 3) -> list[dict]:
     if not context_data:
         return context_data
-
-    candidates_text = ""
-    for i, c in enumerate(context_data):
-        snippet = c.get("text", "")[:200].replace("\n", " ")
-        candidates_text += (
-            f"[{i}] Artist: {c.get('artist', 'N/A')}, "
-            f"Album: {c.get('album', 'N/A')}, "
-            f"Score: {c.get('score', 'N/A')}, "
-            f"Genre: {c.get('genre', 'N/A')}\n"
-            f"    Excerpt: {snippet}\n\n"
-        )
-
-    rerank_prompt = (
-        f"You are ranking album review candidates by how well they answer the user query.\n"
-        f"Return ONLY a JSON array of candidate indices ordered from most to least relevant.\n"
-        f"Example: [2, 0, 4, 1, 3]\n\n"
-        f"Query: {query}\n\n"
-        f"Candidates:\n{candidates_text}"
-    )
+    if _rerank_llm is None:
+        _logs.warning("llm_rerank: LLM not initialized, skipping rerank")
+        return context_data[:top_k]
 
     try:
         response = _rerank_llm.invoke([
             SystemMessage(content="Return only a valid JSON array of integers. No explanation."),
-            HumanMessage(content=rerank_prompt),
+            HumanMessage(content=(
+                "You are ranking album review candidates by how well they answer the user query.\n"
+                "Return ONLY a JSON array of candidate indices ordered from most to least relevant.\n"
+                f"Example: [2, 0, 4, 1, 3]\n\nQuery: {query}\n\nCandidates:\n{_format_candidates(context_data)}"
+            )),
         ])
-        raw = response.content.strip()
-        start = raw.find("[")
-        end = raw.rfind("]") + 1
-        ranked_indices = json.loads(raw[start:end])
-        valid = [i for i in ranked_indices if isinstance(i, int) and 0 <= i < len(context_data)]
-        seen: set[int] = set()
-        deduped = [i for i in valid if not (i in seen or seen.add(i))]
-        reranked = [context_data[i] for i in deduped]
-        missing = [c for i, c in enumerate(context_data) if i not in seen]
-        return (reranked + missing)[:top_k]
-    except Exception:
-        _logs.warning("llm_rerank: falling back to original order")
+        ranked = _parse_rank_indices(response.content.strip(), len(context_data))
+        seen_set = set(ranked)
+        trailing = [c for i, c in enumerate(context_data) if i not in seen_set]
+        return ([context_data[i] for i in ranked] + trailing)[:top_k]
+    except Exception as exc:
+        _logs.warning("llm_rerank: reranking failed (%s), falling back to original order", exc)
         return context_data[:top_k]
 
 
@@ -137,7 +139,12 @@ def hybrid_rag(
 @tool
 def recommend_albums(query: str, keyword: str = "", n_results: int = 3) -> list[MusicReviewData]:
     """Fetches music review data using hybrid RAG. keyword optionally filters by text content."""
-    results = hybrid_rag(query, collection, keyword=keyword or None, top_k_final=n_results)
+    _logs.info("recommend_albums: query=%r keyword=%r n_results=%d", query, keyword, n_results)
+    if _collection is None:
+        _logs.error("recommend_albums: collection not initialized — is ChromaDB running?")
+        return []
+    results = hybrid_rag(query, _collection, keyword=keyword or None, top_k_final=n_results)
+    _logs.info("recommend_albums: returning %d results", len(results))
     return [
         MusicReviewData(
             title=r.get("album", "N/A"),

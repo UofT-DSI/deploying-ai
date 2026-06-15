@@ -49,7 +49,7 @@ def _format_interrupt_message(interrupt) -> str:
                 f"Reply **yes** to approve or anything else to cancel."
             )
     except Exception as e:
-        _logs.warning(f"Could not format interrupt: {e}")
+        _logs.warning("Could not format interrupt: %s", e)
     return (
         "🔐 **Write permission required.** "
         "Reply **yes** to approve or anything else to cancel."
@@ -80,6 +80,47 @@ def _path_info_text(a1: str, a2: str) -> str:
     return "📁 No assignment paths set — use the **Assignment** tab to configure them."
 
 
+def _last_message(state, fallback: str) -> str:
+    msgs = state.values.get("messages", [])
+    return next((m.content for m in reversed(msgs) if getattr(m, "content", None)), fallback)
+
+
+def _append_turn(history: list, message: str, response: str) -> list:
+    return history + [
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": response},
+    ]
+
+
+def _build_user_message(message: str, a1_path: str, a2_path: str) -> str:
+    path_lines = []
+    if a1_path:
+        path_lines.append(f"[Assignment 1 path: {a1_path}]")
+    if a2_path:
+        path_lines.append(f"[Assignment 2 path: {a2_path}]")
+    return "\n".join(path_lines + ["", message]) if path_lines else message
+
+
+def _handle_interrupt_turn(ag, config: dict, message: str, history: list, thread_id: str) -> tuple:
+    approve = message.strip().lower() in ("yes", "y", "approve", "ok", "sure")
+    _logs.info("chat_fn: HITL response — approve=%s thread_id=%s", approve, thread_id)
+    decision = {"type": "approve"} if approve else {"type": "reject", "message": message}
+    try:
+        ag.invoke(Command(resume={"decisions": [decision]}), config, version="v2")
+        state = ag.get_state(config)
+    except Exception as exc:
+        _logs.error("chat_fn: agent resume failed for thread_id=%s: %s", thread_id, exc)
+        return _append_turn(history, message, "Something went wrong during approval. Please try again."), "", False
+    new_interrupted = bool(state.interrupts)
+    _logs.debug("chat_fn: post-resume state — new_interrupted=%s thread_id=%s", new_interrupted, thread_id)
+    response = (
+        _format_interrupt_message(state.interrupts[0])
+        if new_interrupted
+        else _last_message(state, "Done.")
+    )
+    return _append_turn(history, message, response), "", new_interrupted
+
+
 def chat_fn(
     message: str,
     history: list,
@@ -92,60 +133,30 @@ def chat_fn(
     config = {"configurable": {"thread_id": thread_id}}
 
     if is_interrupted:
-        approve = message.strip().lower() in ("yes", "y", "approve", "ok", "sure")
-        decision = (
-            {"type": "approve"}
-            if approve
-            else {"type": "reject", "message": message}
-        )
-        ag.invoke(Command(resume={"decisions": [decision]}), config, version="v2")
-        state = ag.get_state(config)
-        new_interrupted = bool(state.interrupts)
-        if new_interrupted:
-            response = _format_interrupt_message(state.interrupts[0])
-        else:
-            msgs = state.values.get("messages", [])
-            response = next(
-                (m.content for m in reversed(msgs) if getattr(m, "content", None)),
-                "Done.",
-            )
-        history = history + [
-            {"role": "user", "content": message},
-            {"role": "assistant", "content": response},
-        ]
-        return history, "", new_interrupted
+        return _handle_interrupt_turn(ag, config, message, history, thread_id)
 
-    # Normal turn — prepend path context so the reviewer subagent knows where to look
+    _logs.info(
+        "chat_fn: normal turn — thread_id=%s msg_len=%d a1=%s a2=%s",
+        thread_id, len(message), a1_path, a2_path,
+    )
     msg_tuples = [(m["role"], m["content"]) for m in history]
-    path_lines = []
-    if a1_path:
-        path_lines.append(f"[Assignment 1 path: {a1_path}]")
-    if a2_path:
-        path_lines.append(f"[Assignment 2 path: {a2_path}]")
-    user_text = "\n".join(path_lines + ["", message]) if path_lines else message
-    msg_tuples.append(("user", user_text))
+    msg_tuples.append(("user", _build_user_message(message, a1_path, a2_path)))
 
-    ag.invoke({"messages": msg_tuples}, config, version="v2")
-    state = ag.get_state(config)
+    try:
+        ag.invoke({"messages": msg_tuples}, config, version="v2")
+        state = ag.get_state(config)
+    except Exception as exc:
+        _logs.error("chat_fn: agent invocation failed for thread_id=%s: %s", thread_id, exc)
+        return _append_turn(history, message, "Something went wrong. Please try again."), "", False
 
     if state.interrupts:
+        _logs.info("chat_fn: interrupt raised mid-turn for thread_id=%s", thread_id)
         response = _format_interrupt_message(state.interrupts[0])
-        history = history + [
-            {"role": "user", "content": message},
-            {"role": "assistant", "content": response},
-        ]
-        return history, "", True
+        return _append_turn(history, message, response), "", True
 
-    msgs = state.values.get("messages", [])
-    response = next(
-        (m.content for m in reversed(msgs) if getattr(m, "content", None)),
-        "No response.",
-    )
-    history = history + [
-        {"role": "user", "content": message},
-        {"role": "assistant", "content": response},
-    ]
-    return history, "", False
+    response = _last_message(state, "No response.")
+    _logs.info("chat_fn: normal turn complete — thread_id=%s", thread_id)
+    return _append_turn(history, message, response), "", False
 
 
 def save_paths_fn(a1: str, a2: str) -> tuple:
@@ -221,7 +232,7 @@ if __name__ == "__main__":
     init_mcp()
     mcp_tools = get_mcp_tools()
     if mcp_tools:
-        _logs.info(f"MCP tools loaded ({len(mcp_tools)}): {[t.name for t in mcp_tools]}")
+        _logs.info("MCP tools loaded (%d): %s", len(mcp_tools), [t.name for t in mcp_tools])
     else:
         _logs.warning("No MCP tools loaded — Docker may not be running or images not pulled.")
     agent = get_agent(extra_tools=mcp_tools)
