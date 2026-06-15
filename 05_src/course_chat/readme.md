@@ -59,7 +59,7 @@ The file `main.py` contains the LLM model setup and agent creation. Tools are in
 - Python environment with course dependencies installed
 - Docker Desktop running
 - ChromaDB running (via `05_src/deploying_ai_data/docker-compose.yml`)
-- API keys set in `.secrets` (see `.env.example` if available)
+- API keys set in `.secrets` (see `.secrets.template` if available)
 
 ### 1. Start ChromaDB
 
@@ -81,7 +81,7 @@ This indexes:
 - `01_materials/labs/*.ipynb` — lab notebooks
 - `03_instructional_team/markdown_slides/*.md` — slide decks
 - `02_activities/*.ipynb` and `*.md` — assignment descriptions
-- `05_src/course_chat/*.py`, `05_src/music_mcp/*.py`, `05_src/static_mcp/*.py`, `05_src/static_weather_mcp/*.py` — course source code
+- `05_src/course_chat/*.py` course source code
 
 Re-run this command whenever course materials are updated; the script uses `upsert` so it is safe to run multiple times.
 

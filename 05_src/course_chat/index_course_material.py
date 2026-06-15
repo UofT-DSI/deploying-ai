@@ -33,9 +33,6 @@ SOURCES = [
     ("assignment", REPO_ROOT / "02_activities",                                "*.ipynb"),
     ("assignment", REPO_ROOT / "02_activities",                                "*.md"),
     ("source",     REPO_ROOT / "05_src" / "course_chat",                       "*.py"),
-    ("source",     REPO_ROOT / "05_src" / "music_mcp",                        "*.py"),
-    ("source",     REPO_ROOT / "05_src" / "static_mcp",                       "*.py"),
-    ("source",     REPO_ROOT / "05_src" / "static_weather_mcp",               "*.py"),
 ]
 
 COLLECTION_NAME = "course_material"
