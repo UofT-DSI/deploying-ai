@@ -1,16 +1,17 @@
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="gradio")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="starlette")
-
 import uuid
 from pathlib import Path
 
-import gradio as gr
+import gradio as gr  # import before filter setup so our filter prepends after gradio's
+
+import warnings
+# Suppress Starlette deprecation warning emitted on every HTTP request from gradio/routes.py
+warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*")
+
 from langgraph.types import Command
 from dotenv import load_dotenv
 
 from course_chat.main import get_agent
-from course_chat.last_path import load_last_path, save_last_path
+from course_chat.last_path import load_last_paths, save_last_paths
 from course_chat.tools_feedback import FEEDBACK_DIR
 from course_chat.tools_mcp import init_mcp, get_mcp_tools
 from utils.logger import get_logger
@@ -68,12 +69,24 @@ def _list_feedback_files() -> str:
     return "\n".join(lines)
 
 
+def _path_info_text(a1: str, a2: str) -> str:
+    parts = []
+    if a1:
+        parts.append(f"A1: `{a1}`")
+    if a2:
+        parts.append(f"A2: `{a2}`")
+    if parts:
+        return "📁 " + " | ".join(parts)
+    return "📁 No assignment paths set — use the **Assignment** tab to configure them."
+
+
 def chat_fn(
     message: str,
     history: list,
     thread_id: str,
     is_interrupted: bool,
-    assignment_path: str,
+    a1_path: str,
+    a2_path: str,
 ) -> tuple:
     ag = _ensure_agent()
     config = {"configurable": {"thread_id": thread_id}}
@@ -102,9 +115,14 @@ def chat_fn(
         ]
         return history, "", new_interrupted
 
-    # Normal turn — build message list for the agent
+    # Normal turn — prepend path context so the reviewer subagent knows where to look
     msg_tuples = [(m["role"], m["content"]) for m in history]
-    user_text = f"[Assignment path: {assignment_path}]\n\n{message}" if assignment_path else message
+    path_lines = []
+    if a1_path:
+        path_lines.append(f"[Assignment 1 path: {a1_path}]")
+    if a2_path:
+        path_lines.append(f"[Assignment 2 path: {a2_path}]")
+    user_text = "\n".join(path_lines + ["", message]) if path_lines else message
     msg_tuples.append(("user", user_text))
 
     ag.invoke({"messages": msg_tuples}, config, version="v2")
@@ -130,33 +148,24 @@ def chat_fn(
     return history, "", False
 
 
-def save_path_fn(path: str, current_path_state: str) -> tuple:
-    path = path.strip()
-    if path:
-        save_last_path(path)
-        status = f"✅ Path saved: `{path}`"
-    else:
-        status = "⚠️ Enter a file or directory path first."
-        path = current_path_state
-    return path, status
+def save_paths_fn(a1: str, a2: str) -> tuple:
+    a1 = a1.strip()
+    a2 = a2.strip()
+    save_last_paths(a1, a2)
+    return a1, a2, "✅ Paths saved.", _path_info_text(a1, a2)
 
 
 with gr.Blocks(title="Course Chat") as app:
     thread_id_state = gr.State(value=lambda: str(uuid.uuid4()))
     interrupted_state = gr.State(value=False)
-    assignment_path_state = gr.State(value=load_last_path)
+    a1_path_state = gr.State(value=lambda: load_last_paths()[0])
+    a2_path_state = gr.State(value=lambda: load_last_paths()[1])
 
     with gr.Tabs():
 
         with gr.Tab("💬 Chat"):
             chatbot = gr.Chatbot(label="Course Chat", height=520)
-            path_info = gr.Markdown(
-                value=lambda: (
-                    f"📁 Assignment path: `{load_last_path()}`"
-                    if load_last_path()
-                    else "📁 No assignment path set — use the **Assignment** tab to set one."
-                )
-            )
+            path_info = gr.Markdown(value=lambda: _path_info_text(*load_last_paths()))
             with gr.Row():
                 msg_box = gr.Textbox(
                     placeholder="Ask about course material, request an assignment review, or just chat...",
@@ -166,29 +175,35 @@ with gr.Blocks(title="Course Chat") as app:
                 )
                 send_btn = gr.Button("Send", scale=1, variant="primary")
 
-            chat_inputs = [msg_box, chatbot, thread_id_state, interrupted_state, assignment_path_state]
+            chat_inputs = [msg_box, chatbot, thread_id_state, interrupted_state, a1_path_state, a2_path_state]
             chat_outputs = [chatbot, msg_box, interrupted_state]
             msg_box.submit(chat_fn, chat_inputs, chat_outputs)
             send_btn.click(chat_fn, chat_inputs, chat_outputs)
 
         with gr.Tab("📄 Assignment"):
             gr.Markdown(
-                "## Assignment Submission Path\n\n"
-                "Set the path to your submission file (Assignment 1) or directory (Assignment 2). "
-                "The path is saved across restarts."
+                "## Assignment Submission Paths\n\n"
+                "Set the paths to your submission files. Paths are saved across restarts."
             )
-            assignment_path_input = gr.Textbox(
-                label="File or directory path",
-                value=load_last_path,
-                placeholder="e.g. C:/Users/you/work/repo/02_activities/assignment_1.ipynb",
+            gr.Markdown("### Assignment 1")
+            a1_path_input = gr.Textbox(
+                label="Assignment 1 — notebook file",
+                value=lambda: load_last_paths()[0],
+                placeholder=r"e.g. C:/Users/you/work/repo/02_activities/assignment_1.ipynb",
             )
-            save_path_btn = gr.Button("Save Path", variant="primary")
+            gr.Markdown("### Assignment 2")
+            a2_path_input = gr.Textbox(
+                label="Assignment 2 — project directory",
+                value=lambda: load_last_paths()[1],
+                placeholder=r"e.g. C:/Users/you/work/repo/05_src/assignment_chat",
+            )
+            save_paths_btn = gr.Button("Save Paths", variant="primary")
             path_save_status = gr.Markdown()
 
-            save_path_btn.click(
-                save_path_fn,
-                [assignment_path_input, assignment_path_state],
-                [assignment_path_state, path_save_status],
+            save_paths_btn.click(
+                save_paths_fn,
+                [a1_path_input, a2_path_input],
+                [a1_path_state, a2_path_state, path_save_status, path_info],
             )
 
         with gr.Tab("📝 Feedback"):
