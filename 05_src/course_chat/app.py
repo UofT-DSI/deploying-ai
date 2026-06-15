@@ -1,3 +1,7 @@
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="gradio")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="starlette")
+
 from course_chat.main import get_agent
 import gradio as gr
 from dotenv import load_dotenv

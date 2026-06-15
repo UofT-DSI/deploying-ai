@@ -15,15 +15,24 @@ load_dotenv(".env")
 load_dotenv(".secrets")
 
 _GATEWAY_URL = "https://k7uffyg03f.execute-api.us-east-1.amazonaws.com/prod/openai/v1"
+_USE_GATEWAY = os.getenv("USE_GATEWAY", "true").lower() != "false"
+
+
+def _make_llm(model_id: str):
+    if _USE_GATEWAY:
+        return init_chat_model(
+            model_id,
+            base_url=_GATEWAY_URL,
+            api_key="any value",
+            default_headers={"x-api-key": os.getenv("API_GATEWAY_KEY")},
+        )
+    return init_chat_model(model_id)
+
 
 tools = [get_cat_facts, get_dog_facts, recommend_albums, get_horoscope]
 
 
 def get_agent() -> CompiledStateGraph:
-    llm = init_chat_model(
-        "openai:gpt-4o-mini",
-        base_url=_GATEWAY_URL,
-        api_key="any value",
-        default_headers={"x-api-key": os.getenv("API_GATEWAY_KEY")},
-    )
+    _logs.info(f"get_agent: USE_GATEWAY={_USE_GATEWAY}")
+    llm = _make_llm("openai:gpt-4o-mini")
     return create_deep_agent(model=llm, tools=tools, system_prompt=return_instructions())
