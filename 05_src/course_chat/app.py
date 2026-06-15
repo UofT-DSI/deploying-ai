@@ -12,12 +12,21 @@ from dotenv import load_dotenv
 from course_chat.main import get_agent
 from course_chat.last_path import load_last_path, save_last_path
 from course_chat.tools_feedback import FEEDBACK_DIR
+from course_chat.tools_mcp import init_mcp, get_mcp_tools
 from utils.logger import get_logger
 
 _logs = get_logger(__name__)
 load_dotenv(".secrets")
 
-agent = get_agent()
+# Agent is initialized in __main__ (after MCP) or lazily on first chat turn.
+agent = None
+
+
+def _ensure_agent():
+    global agent
+    if agent is None:
+        agent = get_agent()
+    return agent
 
 
 def _format_interrupt_message(interrupt) -> str:
@@ -66,6 +75,7 @@ def chat_fn(
     is_interrupted: bool,
     assignment_path: str,
 ) -> tuple:
+    ag = _ensure_agent()
     config = {"configurable": {"thread_id": thread_id}}
 
     if is_interrupted:
@@ -75,8 +85,8 @@ def chat_fn(
             if approve
             else {"type": "reject", "message": message}
         )
-        agent.invoke(Command(resume={"decisions": [decision]}), config, version="v2")
-        state = agent.get_state(config)
+        ag.invoke(Command(resume={"decisions": [decision]}), config, version="v2")
+        state = ag.get_state(config)
         new_interrupted = bool(state.interrupts)
         if new_interrupted:
             response = _format_interrupt_message(state.interrupts[0])
@@ -97,8 +107,8 @@ def chat_fn(
     user_text = f"[Assignment path: {assignment_path}]\n\n{message}" if assignment_path else message
     msg_tuples.append(("user", user_text))
 
-    agent.invoke({"messages": msg_tuples}, config, version="v2")
-    state = agent.get_state(config)
+    ag.invoke({"messages": msg_tuples}, config, version="v2")
+    state = ag.get_state(config)
 
     if state.interrupts:
         response = _format_interrupt_message(state.interrupts[0])
@@ -192,4 +202,12 @@ with gr.Blocks(title="Course Chat") as app:
 
 if __name__ == "__main__":
     _logs.info("Starting Course Chat App...")
+    _logs.info("Initializing MCP tool connections (Docker required)...")
+    init_mcp()
+    mcp_tools = get_mcp_tools()
+    if mcp_tools:
+        _logs.info(f"MCP tools loaded ({len(mcp_tools)}): {[t.name for t in mcp_tools]}")
+    else:
+        _logs.warning("No MCP tools loaded — Docker may not be running or images not pulled.")
+    agent = get_agent(extra_tools=mcp_tools)
     app.launch()
