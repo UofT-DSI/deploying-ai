@@ -85,7 +85,6 @@ async def _init_client_async() -> None:
     global _mcp_client, _mcp_tools
     connections = _build_connections()
     client = MultiServerMCPClient(connections)
-    await client.__aenter__()
     _mcp_client = client
     _mcp_tools = await client.get_tools()
     _logs.info(f"MCP tools loaded: {[t.name for t in _mcp_tools]}")
