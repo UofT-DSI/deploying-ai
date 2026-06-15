@@ -23,7 +23,7 @@ tools = [get_cat_facts, get_dog_facts, recommend_albums, get_horoscope]
 
 _feedback_permission = FilesystemPermission(
     operations=["write"],
-    paths=[str(FEEDBACK_DIR)],
+    paths=["/"],
     mode="interrupt",
 )
 
