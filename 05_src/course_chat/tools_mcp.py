@@ -131,3 +131,8 @@ def init_mcp(timeout: float = 60.0) -> None:
 def get_mcp_tools() -> list:
     """Return the list of LangChain BaseTool objects loaded from MCP servers."""
     return _mcp_tools
+
+
+def get_background_loop() -> asyncio.AbstractEventLoop | None:
+    """Return the running event loop that owns the MCP sessions, or None."""
+    return _background_loop

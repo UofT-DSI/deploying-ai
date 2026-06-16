@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -13,7 +14,8 @@ from dotenv import load_dotenv
 from course_chat.main import get_agent
 from course_chat.last_path import load_last_paths, save_last_paths
 from course_chat.tools_feedback import FEEDBACK_DIR
-from course_chat.tools_mcp import init_mcp, get_mcp_tools
+from course_chat.tools_mcp import init_mcp, get_mcp_tools, get_background_loop
+from course_chat.tool_logger import ToolCallLogger
 from utils.logger import get_logger
 
 _logs = get_logger(__name__)
@@ -28,6 +30,21 @@ def _ensure_agent():
     if agent is None:
         agent = get_agent()
     return agent
+
+
+def _agent_invoke(ag, args, config):
+    """Invoke the agent, routing through the MCP background loop when present.
+
+    MCP StructuredTools are async-only; running ainvoke in their own loop avoids
+    the 'StructuredTool does not support sync invocation' error.
+    """
+    config_with_callbacks = {**config, "callbacks": list(config.get("callbacks") or []) + [ToolCallLogger()]}
+    loop = get_background_loop()
+    if loop and loop.is_running():
+        return asyncio.run_coroutine_threadsafe(
+            ag.ainvoke(args, config_with_callbacks, version="v2"), loop
+        ).result()
+    return ag.invoke(args, config_with_callbacks, version="v2")
 
 
 def _format_interrupt_message(interrupt) -> str:
@@ -106,7 +123,7 @@ def _handle_interrupt_turn(ag, config: dict, message: str, history: list, thread
     _logs.info("chat_fn: HITL response — approve=%s thread_id=%s", approve, thread_id)
     decision = {"type": "approve"} if approve else {"type": "reject", "message": message}
     try:
-        ag.invoke(Command(resume={"decisions": [decision]}), config, version="v2")
+        _agent_invoke(ag, Command(resume={"decisions": [decision]}), config)
         state = ag.get_state(config)
     except Exception as exc:
         _logs.error("chat_fn: agent resume failed for thread_id=%s: %s", thread_id, exc)
@@ -143,7 +160,7 @@ def chat_fn(
     msg_tuples.append(("user", _build_user_message(message, a1_path, a2_path)))
 
     try:
-        ag.invoke({"messages": msg_tuples}, config, version="v2")
+        _agent_invoke(ag, {"messages": msg_tuples}, config)
         state = ag.get_state(config)
     except Exception as exc:
         _logs.error("chat_fn: agent invocation failed for thread_id=%s: %s", thread_id, exc)
