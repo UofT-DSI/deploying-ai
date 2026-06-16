@@ -114,7 +114,16 @@ By the end of this module, participants will be able to:
   * [Sergii Khomych](https://www.linkedin.com/in/sergey-khomich-96350088/)
   * [Shiraz Latif](https://www.linkedin.com/in/shiraz-latif/)
   
+### Deploying AI - Cohort 4 (June 2026)
+
+**Questions can be submitted to the _help_ channel on Slack**
+
+* Technical Facilitator: 
+  * [Vishnou Vinayagame](https://www.linkedin.com/in/vinayagame-vishnou/)
   
+* Learning Support: 
+
+  * [Dmytro Bonislavskyi](https://www.linkedin.com/in/dmytro-bonislavskyi/)
 
 ## Delivery of the Learning Module
 
@@ -143,7 +152,25 @@ Participants are encouraged to engage actively during the learning module. The k
 |Live| July 13 | 7.  Optimization |
 |Work| July 17 | Work Period |
 
+## Deploying AI - Cohort 4 (June 2026)
 
+|Type |Date        |Topic                             |
+|-----|------------|----------------------------------|
+|Live| June 16 | 1. Introduction to AI Engineering and Foundation Models |
+|Live| June 18 | 2. Evaluating Foundation Models |
+|Work| June 19 | Work Period |
+|Live| June 23 | 3. Prompt Engineering I |
+|Live| June 25 | 4. Prompt Engineering II |
+|Work| June 26 | Work Period |
+|Deadline| June 28 | Assignment 1 Due |
+|Live| June 30 | 5.  Retrieval Augmented Generation I |
+|Live| July 02 | 6.  Retrieval Augmented Generation II |
+|Work| July 03 | Work Period |
+|Live| July 07 | 7.  Agents |
+|Live| July 08 | 8.  Fine Tuning and Data Set Engineering |
+|Live| July 09 | 9.  Optimization |
+|Work| July 10 | Work Period |
+|Deadline| July 12 | Assignment 2 Due |
 
 
 ### Requirements
