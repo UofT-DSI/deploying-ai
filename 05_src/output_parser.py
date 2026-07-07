@@ -37,30 +37,59 @@ def _ast_parse(arg: str) -> Any:
         return arg
 
 
-def _parse_llm_compiler_action_args(args: str, tool: Union[str, BaseTool]) -> list[Any]:
-    """Parse arguments from a string."""
+def _parse_llm_compiler_action_args(args: str, tool: Union[str, BaseTool]) -> dict:
+    """Parse arguments from a string.
+
+    Handles both keyword-style args (e.g. ``query="..."``) and a leading
+    positional argument (e.g. ``math("age of Obama", context=["$1"])``). The
+    tool descriptions teach the model to pass the first argument positionally,
+    so a keyword-only parser would silently drop it.
+    """
     if args == "":
-        return ()
+        return {}
     if isinstance(tool, str):
-        return ()
+        return {}
+    keys = list(tool.args.keys())
+
+    # Locate the first keyword-style argument; everything before it (if any) is
+    # a positional value bound to the first tool argument.
+    first_kw_idx = None
+    for key in keys:
+        needle = f"{key}="
+        if needle in args:
+            idx = args.index(needle)
+            if first_kw_idx is None or idx < first_kw_idx:
+                first_kw_idx = idx
+
+    positional_str = args if first_kw_idx is None else args[:first_kw_idx]
+    keyword_str = "" if first_kw_idx is None else args[first_kw_idx:]
+
     extracted_args = {}
     tool_key = None
     prev_idx = None
-    for key in tool.args.keys():
+    for key in keys:
         # Split if present
-        if f"{key}=" in args:
-            idx = args.index(f"{key}=")
+        if f"{key}=" in keyword_str:
+            idx = keyword_str.index(f"{key}=")
             if prev_idx is not None:
                 extracted_args[tool_key] = _ast_parse(
-                    args[prev_idx:idx].strip().rstrip(",")
+                    keyword_str[prev_idx:idx].strip().rstrip(",")
                 )
-            args = args.split(f"{key}=", 1)[1]
+            keyword_str = keyword_str.split(f"{key}=", 1)[1]
             tool_key = key
             prev_idx = 0
     if prev_idx is not None:
         extracted_args[tool_key] = _ast_parse(
-            args[prev_idx:].strip().rstrip(",").rstrip(")")
+            keyword_str[prev_idx:].strip().rstrip(",").rstrip(")")
         )
+
+    # Bind a leading positional value to the first argument not already set.
+    positional_str = positional_str.strip().rstrip(",").strip()
+    if positional_str:
+        for key in keys:
+            if key not in extracted_args:
+                extracted_args[key] = _ast_parse(positional_str)
+                break
     return extracted_args
 
 
