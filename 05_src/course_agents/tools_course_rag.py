@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from utils.logger import get_logger
 import os
 
-from course_chat.chroma_utils import parse_chroma_results
+from course_agents.chroma_utils import parse_chroma_results
 
 _logs = get_logger(__name__)
 load_dotenv()

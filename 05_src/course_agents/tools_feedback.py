@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from utils.logger import get_logger
 
-from course_chat.tools_assignment_reviewer import AssignmentFeedback, RequirementCheck
+from course_agents.tools_assignment_reviewer import AssignmentFeedback, RequirementCheck
 
 _logs = get_logger(__name__)
 

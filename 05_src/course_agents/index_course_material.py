@@ -2,7 +2,7 @@
 One-time indexing script: indexes course material into ChromaDB 'course_material' collection.
 
 Run from 05_src/ directory:
-    python -m course_chat.index_course_material
+    python -m course_agents.index_course_material
 
 Prerequisites:
     - ChromaDB running (CHROMA_URL env var, default: localhost)
@@ -32,7 +32,7 @@ SOURCES = [
     ("slide",      REPO_ROOT / "03_instructional_team" / "markdown_slides",    "*.md"),
     ("assignment", REPO_ROOT / "02_activities",                                "*.ipynb"),
     ("assignment", REPO_ROOT / "02_activities",                                "*.md"),
-    ("source",     REPO_ROOT / "05_src" / "course_chat",                       "*.py"),
+    ("source",     REPO_ROOT / "05_src" / "course_agents",                       "*.py"),
 ]
 
 COLLECTION_NAME = "course_material"
