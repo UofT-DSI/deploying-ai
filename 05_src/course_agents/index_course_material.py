@@ -61,7 +61,6 @@ def _chunk_notebook(path: Path, rel_path: str, doc_type: str) -> list[dict]:
                            "text": source.strip(), "metadata": base_meta})
             continue
 
-        # Split long cells at newlines
         lines = source.split("\n")
         buf = ""
         sub = 0

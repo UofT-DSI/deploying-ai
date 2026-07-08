@@ -47,6 +47,6 @@ def get_horoscope_from_response(sign: str, response: requests.Response) -> str:
         _logs.error("get_horoscope_from_response: JSON parse failed for sign=%s: %s", sign, exc)
         return f"Could not parse horoscope response for {sign}."
     data = resp_dict.get("data") or {}
-    horoscope_data = data.get("horoscope_data", "No horoscope found.")
+    horoscope_data = data.get("horoscope", "No horoscope found.")
     date = data.get("date", "No date found.")
     return f"Horoscope for {sign.capitalize()} on {date}: {horoscope_data}"

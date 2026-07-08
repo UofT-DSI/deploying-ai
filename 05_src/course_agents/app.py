@@ -57,8 +57,7 @@ def _format_interrupt_message(interrupt) -> str:
             file_path = args.get("file_path", "unknown")
             content = args.get("content", "")
             preview = content[:300] + "\n..." if len(content) > 300 else content
-            full_path = FEEDBACK_DIR / Path(file_path).name
-            overwrite_note = " **(will overwrite existing file)**" if full_path.exists() else ""
+            overwrite_note = " **(will overwrite existing file)**" if Path(file_path).exists() else ""
             return (
                 f"🔐 **Write permission required{overwrite_note}**\n\n"
                 f"Target: `{file_path}`\n\n"
