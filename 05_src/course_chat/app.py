@@ -33,8 +33,7 @@ def course_chat(message: str, history: list[dict]) -> str:
     return response['messages'][len(response['messages']) - 1].content
 
 chat = gr.ChatInterface(
-    fn=course_chat,
-    type="messages"
+    fn=course_chat
 )
 
 if __name__ == "__main__":

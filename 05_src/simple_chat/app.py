@@ -29,6 +29,5 @@ def simple_chat(message: str, history: list[dict]) -> str:
 
     
 gr.ChatInterface(
-    fn=simple_chat,
-    type="messages"
+    fn=simple_chat
 ).launch()

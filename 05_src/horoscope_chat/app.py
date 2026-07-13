@@ -11,8 +11,7 @@ _logs = get_logger(__name__)
 load_dotenv('.secrets')
 
 chat = gr.ChatInterface(
-    fn=horoscope_chat,
-    type="messages"
+    fn=horoscope_chat
 )
 
 if __name__ == "__main__":
