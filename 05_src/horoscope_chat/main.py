@@ -74,10 +74,26 @@ def get_horoscope_from_service(sign:str, day:str):
 def get_horoscope_from_response(sign:str, response:requests.Response) -> str:
     resp_dict = json.loads(response.text)
     data = resp_dict.get("data")
-    horoscope_data = data.get("horoscope_data", "No horoscope found.")
+    horoscope_data = data.get("horoscope", "No horoscope found.")
     date = data.get("date", "No date found.")
     horoscope = f"Horoscope for {sign.capitalize()} on {date}: {horoscope_data}"
     return horoscope
+
+
+def extract_text_content(content) -> str:
+    """
+    Gradio's Chatbot normalizes string content into a list of parts like
+    [{"type": "text", "text": "..."}], which the Responses API does not accept
+    as-is. Flatten back down to plain text.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in content
+        )
+    return "" if content is None else str(content)
 
 
 def sanitize_history(history: list[dict]) -> list[dict]:
@@ -85,7 +101,7 @@ def sanitize_history(history: list[dict]) -> list[dict]:
     for msg in history:
         clean_history.append({
             "role": msg.get("role"),
-            "content": msg.get("content")
+            "content": extract_text_content(msg.get("content"))
         })
     return clean_history
 

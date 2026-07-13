@@ -72,9 +72,7 @@ def llm_call(state: dict):
         "messages": [
             model_with_tools.invoke(
                 [
-                    SystemMessage(
-                        content="You are a helpful assistant tasked with stating interesting and fun facts about cats and dogs."
-                    )
+                    SystemMessage(content=return_instructions_root())
                 ]
                 + state["messages"]
             )
