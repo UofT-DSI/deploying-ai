@@ -101,7 +101,7 @@ By the end of this module, participants will be able to:
 
 ## Contacts
 
-### Deploying AI - Doctoral Certificate (June 2026)
+### Deploying AI - Cohort 5 (October 2026)
 
 **Questions can be submitted to the _help_ channel on Slack**
 
@@ -110,20 +110,10 @@ By the end of this module, participants will be able to:
   
 * Learning Support: 
 
-  * [Dmytro Bonislavskyi](https://www.linkedin.com/in/dmytro-bonislavskyi/)
+  
   * [Sergii Khomych](https://www.linkedin.com/in/sergey-khomich-96350088/)
-  * [Shiraz Latif](https://www.linkedin.com/in/shiraz-latif/)
+  * [Aditya Kulkarni](https://www.linkedin.com/in/aditya-s-kulkarni/)
   
-### Deploying AI - Cohort 4 (June 2026)
-
-**Questions can be submitted to the _help_ channel on Slack**
-
-* Technical Facilitator: 
-  * [Vishnou Vinayagame](https://www.linkedin.com/in/vinayagame-vishnou/)
-  
-* Learning Support: 
-
-  * [Dmytro Bonislavskyi](https://www.linkedin.com/in/dmytro-bonislavskyi/)
 
 ## Delivery of the Learning Module
 
@@ -137,40 +127,20 @@ Participants are encouraged to engage actively during the learning module. The k
 
 |Type |Date        |Topic                             |
 |-----|------------|----------------------------------|
-|Live| June 17 | 1. Introduction to AI Engineering and Foundation Models|
-|Work| June 19 | Work Period |
-|Live| June 22 | 2. Evaluating Foundation Models |
-|Live| June 24 | 3. Prompt Engineering |
-|Work| June 26 | Work Period |
-|Deadline| June 28 | Assignment 1 Due |
-|Live| June 29 | 4. Retrieval Augmented Generation |
-|Work| July 3 | Work Period |
-|Live| July 6 | 5.  Agents |
-|Live| July 8 | 6.  Fine Tuning and Data Set Engineering |
-|Work| July 10 | Work Period |
-|Deadline| July 12 | Assignment 2 Due |
-|Live| July 13 | 7.  Optimization |
-|Work| July 17 | Work Period |
-
-## Deploying AI - Cohort 4 (June 2026)
-
-|Type |Date        |Topic                             |
-|-----|------------|----------------------------------|
-|Live| June 16 | 1. Introduction to AI Engineering and Foundation Models |
-|Live| June 18 | 2. Evaluating Foundation Models |
-|Work| June 19 | Work Period |
-|Live| June 23 | 3. Prompt Engineering I |
-|Live| June 25 | 4. Prompt Engineering II |
-|Work| June 26 | Work Period |
-|Deadline| June 28 | Assignment 1 Due |
-|Live| June 30 | 5.  Retrieval Augmented Generation I |
-|Live| July 02 | 6.  Retrieval Augmented Generation II |
-|Work| July 03 | Work Period |
-|Live| July 07 | 7.  Agents |
-|Live| July 08 | 8.  Fine Tuning and Data Set Engineering |
-|Live| July 09 | 9.  Optimization |
-|Work| July 10 | Work Period |
-|Deadline| July 12 | Assignment 2 Due |
+|Live| Tue., Oct. 20 | 1. Introduction to AI Engineering and Foundation Models|
+|Live| Thu., Oct. 22 | 2. Evaluating Foundation Models |
+|Work| Fri., Oct. 23 | Work Period |
+|Live| Tue., Oct. 27 | 3. Prompt Engineering |
+|Live| Thu., Oct. 29 | 4. Retrieval Augmented Generation |
+|Work| Fri., Oct. 30| Work Period |
+|Deadline| Mon., Nov 2 | Assignment 1 Due |
+|Live| Tue., Nov. 3 | 5.  Agents |
+|Live| Thu., Nov. 5 | 6.  Fine Tuning |
+|Work| Fri., Nov. 6 | Work Period |
+|Live| Tue., Nov. 10 | 7.  Data Set Engineering |
+|Live| Tue., Nov. 12 | 8.  Optimization |
+|Work| Fri., Nov. 13 | Work Period |
+|Deadline| Mon., Nov. 16 | Assignment 2 Due |
 
 
 ### Requirements
