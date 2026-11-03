@@ -17,6 +17,7 @@ deploying-ai-env
 # Secrets
 *.secrets
 *.secrets_*
+secrets.01
 
 # AI
 .claude/

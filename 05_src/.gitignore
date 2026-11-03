@@ -1,1 +1,6 @@
 .gradio
+# Secrets
+*.secrets
+*.secrets_*
+secret.01
+**/.secrets*
