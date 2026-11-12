@@ -55,7 +55,7 @@ class ListingInputTests(unittest.TestCase):
         self.assertEqual(row["note"], "HTTP 403")
 
     def test_one_csv_contains_submitted_missing_and_warning_rows(self):
-        submitted = {"number": 9, "title": "Assignment 1", "created_at": "2026-11-02T00:00:00Z", "head": {"ref": "assignment-1"}, "state": "closed", "merged_at": None, "html_url": "https://github.com/ada/deploying-ai/pull/9"}
+        submitted = {"number": 9, "title": "Assignment 2", "created_at": "2026-11-02T00:00:00Z", "head": {"ref": "assignment-2"}, "state": "closed", "merged_at": None, "html_url": "https://github.com/ada/deploying-ai/pull/9"}
         with tempfile.TemporaryDirectory() as tmp:
             csv_path = Path(tmp) / "students.csv"
             csv_path.write_text(
@@ -66,10 +66,10 @@ class ListingInputTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch.object(review, "fetch_prs", side_effect=[[submitted], []]) as fetch:
-                status = review.main(["--csv", str(csv_path), "--assignment", "1", "--output-dir", tmp])
+                status = review.main(["--csv", str(csv_path), "--assignment", "2", "--output-dir", tmp])
             self.assertEqual(status, 1)
             self.assertEqual(fetch.call_count, 2)
-            reports = list(Path(tmp).glob("assignment-1-review-*.csv"))
+            reports = list(Path(tmp).glob("assignment-2-review-*.csv"))
             self.assertEqual(len(reports), 1)
             import csv
             with reports[0].open(newline="", encoding="utf-8") as handle:
