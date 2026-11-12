@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 DEFAULT_REPORTS = Path("03_instructional_team/review/reports")
 ASSIGNMENT_BRANCH = {1: "assignment-1", 2: "assignment-2"}
 REPORT_FIELDS = ("input_row", "student_name", "email", "repo_url", "repository_url", "assignment", "status", "pr_url", "pr_state", "missing_items", "note")
-ASSIGNMENT_TITLE = re.compile(r"\bassignment[\s#:_-]*0*([12])\b", re.IGNORECASE)
+ASSIGNMENT_TITLE = re.compile(r"\bassignment[\s#:_-]*(?:0*([12])|(one|two))\b", re.IGNORECASE)
 
 
 class Student(NamedTuple):
@@ -42,7 +42,7 @@ class LookupFailure(Exception):
 def parse_listing_url(url: str) -> tuple[str, str]:
     parsed = urlparse(url)
     parts = parsed.path.strip("/").split("/")
-    if (parsed.scheme != "https" or parsed.netloc.lower() != "github.com"
+    if (parsed.scheme != "https" or parsed.netloc.lower() not in ("github.com", "www.github.com")
             or parsed.params or len(parts) != 3 or parts[2] not in ("pull", "pulls")):
         raise ValueError(f"invalid GitHub pull request listing URL: {url}")
     owner, repo_name = parts[:2]
@@ -133,7 +133,8 @@ def select_pr(prs: list[dict], assignment: int) -> Result:
     for pr in prs:
         title_match = ASSIGNMENT_TITLE.search(pr.get("title") or "")
         if title_match:
-            belongs = int(title_match.group(1)) == assignment
+            found_assignment = int(title_match.group(1)) if title_match.group(1) else {"one": 1, "two": 2}[title_match.group(2).lower()]
+            belongs = found_assignment == assignment
         else:
             belongs = (pr.get("head") or {}).get("ref") == branch
         if belongs:

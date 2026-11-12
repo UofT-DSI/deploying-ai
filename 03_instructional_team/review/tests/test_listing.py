@@ -17,6 +17,7 @@ class ListingInputTests(unittest.TestCase):
         student = review.make_student("Ada", "ada@example.com", "https://github.com/ada/deploying-ai/pulls?q=is%3Apr")
         self.assertEqual(student.repo, "ada/deploying-ai")
         self.assertEqual(student.url, "https://github.com/ada/deploying-ai/pulls")
+        self.assertEqual(review.make_student("Amir", "amir.haka@gmail.com", "https://www.github.com/amir318is/deploying-ai/pulls").repo, "amir318is/deploying-ai")
         self.assertEqual(review.make_student("Ada", "ada@example.com", "https://github.com/ada/deploying-ai/pull").url, student.url)
         with self.assertRaises(ValueError):
             review.make_student("Ada", "ada@example.com", "https://github.com/ada/deploying-ai/pull/42")
@@ -37,6 +38,10 @@ class ListingInputTests(unittest.TestCase):
         result = review.select_pr([pr], 2)
         self.assertEqual(result.state, "merged")
         self.assertEqual(review.report_row(review.make_student("Ada", "ada@example.com", "https://github.com/ada/deploying-ai/pulls"), 2, result)["note"], "PR was closed by merging")
+
+    def test_spelled_out_assignment_title(self):
+        pr = {"number": 3, "title": "Assignment one done", "created_at": "2026-11-01T00:00:00Z", "head": {"ref": "other"}, "state": "open", "merged_at": None, "html_url": "https://github.com/amir318is/deploying-ai/pull/3"}
+        self.assertEqual(review.select_pr([pr], 1).kind, "submitted")
 
     def test_lookup_failure_is_error_not_missing_submission(self):
         student = review.make_student("Ada", "ada@example.com", "https://github.com/ada/deploying-ai/pulls")
