@@ -1,8 +1,7 @@
-"""Find student assignment pull requests and create local review reports."""
+"""Find student assignment pull requests and create one CSV review report."""
 
 import argparse
 import csv
-import hashlib
 import json
 import logging
 import re
@@ -15,6 +14,8 @@ from urllib.parse import urlparse
 
 DEFAULT_REPORTS = Path("03_instructional_team/review/reports")
 ASSIGNMENT_BRANCH = {1: "assignment-1", 2: "assignment-2"}
+REPORT_FIELDS = ("input_row", "student_name", "email", "repo_url", "repository_url", "assignment", "status", "pr_url", "pr_state", "missing_items", "note")
+ASSIGNMENT_TITLE = re.compile(r"\bassignment[\s#:_-]*0*([12])\b", re.IGNORECASE)
 
 
 class Student(NamedTuple):
@@ -22,7 +23,6 @@ class Student(NamedTuple):
     email: str
     url: str
     repo: str
-    pr_number: int | None = None
     missing: tuple[str, ...] = ()
     row_number: int | None = None
     issue: str | None = None
@@ -36,42 +36,40 @@ class Result(NamedTuple):
 
 
 class LookupFailure(Exception):
-    """The supplied PR could not be verified."""
+    """The repository's PR list could not be verified."""
 
 
-def parse_pr_url(url: str) -> tuple[str, int, str]:
+def parse_listing_url(url: str) -> tuple[str, str]:
     parsed = urlparse(url)
     parts = parsed.path.strip("/").split("/")
     if (parsed.scheme != "https" or parsed.netloc.lower() != "github.com"
-            or parsed.query or parsed.fragment or parsed.params or len(parts) != 4
-            or parts[2] != "pull" or not parts[3].isdigit() or int(parts[3]) < 1):
-        raise ValueError(f"invalid GitHub pull request URL: {url}")
+            or parsed.params or len(parts) != 3 or parts[2] not in ("pull", "pulls")):
+        raise ValueError(f"invalid GitHub pull request listing URL: {url}")
     owner, repo_name = parts[:2]
     if not re.fullmatch(r"[A-Za-z0-9-]+", owner) or not re.fullmatch(r"[A-Za-z0-9_.-]+", repo_name):
-        raise ValueError(f"invalid GitHub pull request URL: {url}")
+        raise ValueError(f"invalid GitHub pull request listing URL: {url}")
     repo = f"{owner}/{repo_name}"
-    number = int(parts[3])
-    return repo, number, f"https://github.com/{repo}/pull/{number}"
+    return repo, f"https://github.com/{repo}/pulls"
 
 
 def make_student(name: str, email: str, url: str) -> Student:
     name, email, url = name.strip(), email.strip(), url.strip()
     if not name or not email or not url or "@" not in email:
-        raise ValueError("name, email, and GitHub pull request URL are required")
+        raise ValueError("name, email, and GitHub pull request listing URL are required")
     if any(ord(char) < 32 for char in name + email + url):
         raise ValueError("student fields cannot contain control characters")
-    repo, number, canonical_url = parse_pr_url(url)
-    return Student(name, email, canonical_url, repo, number)
+    repo, canonical_url = parse_listing_url(url)
+    return Student(name, email, canonical_url, repo)
 
 
 def parse_input(argv: list[str] | None = None) -> tuple[list[Student], tuple[int, ...], Path]:
     parser = argparse.ArgumentParser(
-        description="Verify supplied assignment PR links and create local Markdown review reports. Run from the repository base directory.",
-        epilog="Example: python 03_instructional_team/review/review.py --student 'Ada Lovelace' ada@example.com https://github.com/ada/deploying-ai/pull/42 --assignment 1",
+        description="Find assignment PRs from repository PR listing links and create one CSV report. Run from the repository base directory.",
+        epilog="Example: python 03_instructional_team/review/review.py --student 'Ada Lovelace' ada@example.com https://github.com/ada/deploying-ai/pulls --assignment 1",
     )
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--student", nargs=3, action="append", metavar=("NAME", "EMAIL", "PR_URL"), help="Student details; repeat for more students")
-    source.add_argument("--csv", type=Path, help="CSV with name,email,repo_url columns; repo_url contains the PR link")
+    source.add_argument("--student", nargs=3, action="append", metavar=("NAME", "EMAIL", "PULLS_URL"), help="Student details; repeat for more students")
+    source.add_argument("--csv", type=Path, help="CSV with name,email,repo_url columns; repo_url contains the PR listing link")
     parser.add_argument("--assignment", required=True, choices=("1", "2"), help="Assignment to check")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_REPORTS, help="Parent directory for a new report run")
     args = parser.parse_args(argv)
@@ -96,7 +94,7 @@ def parse_input(argv: list[str] | None = None) -> tuple[list[Student], tuple[int
                         students.append(Student(name, email, url, "", missing=missing, row_number=row_number, issue=issue))
                         continue
                     try:
-                        students.append(make_student(name, email, url))
+                        students.append(make_student(name, email, url)._replace(row_number=row_number))
                     except ValueError as exc:
                         logging.warning("CSV row %s: %s; skipping lookup", row_number, exc)
                         students.append(Student(name, email, url, "", row_number=row_number, issue=str(exc)))
@@ -108,11 +106,11 @@ def parse_input(argv: list[str] | None = None) -> tuple[list[Student], tuple[int
     return students, assignments, args.output_dir
 
 
-def fetch_pr(repo: str, number: int) -> dict:
-    endpoint = f"repos/{repo}/pulls/{number}"
+def fetch_prs(repo: str) -> list[dict]:
+    endpoint = f"repos/{repo}/pulls?state=all&per_page=100"
     try:
         completed = subprocess.run(
-            ["gh", "api", "--method", "GET", endpoint],
+            ["gh", "api", "--method", "GET", "--paginate", "--slurp", endpoint],
             capture_output=True, text=True, encoding="utf-8", check=False,
         )
     except (OSError, UnicodeError) as exc:
@@ -121,57 +119,59 @@ def fetch_pr(repo: str, number: int) -> dict:
         detail = completed.stderr.strip().splitlines()
         raise LookupFailure(detail[0] if detail else f"GitHub CLI exited with code {completed.returncode}")
     try:
-        pr = json.loads(completed.stdout)
-        if not isinstance(pr, dict) or pr.get("number") != number:
+        pages = json.loads(completed.stdout)
+        if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
             raise ValueError("unexpected response shape")
-        return pr
+        return [pr for page in pages for pr in page]
     except (ValueError, TypeError) as exc:
         raise LookupFailure(f"GitHub returned invalid PR data: {exc}") from exc
 
 
-def select_pr(pr: dict, assignment: int) -> Result:
+def select_pr(prs: list[dict], assignment: int) -> Result:
     branch = ASSIGNMENT_BRANCH[assignment]
-    actual = (pr.get("head") or {}).get("ref")
-    if actual != branch:
-        return Result("warning", primary=pr, reason=f"PR branch {actual or 'unknown'} does not match {branch}")
+    matches = []
+    for pr in prs:
+        title_match = ASSIGNMENT_TITLE.search(pr.get("title") or "")
+        if title_match:
+            belongs = int(title_match.group(1)) == assignment
+        else:
+            belongs = (pr.get("head") or {}).get("ref") == branch
+        if belongs:
+            matches.append(pr)
+    if not matches:
+        return Result("not_submitted")
+    pr = max(matches, key=lambda candidate: (candidate.get("created_at") or "", candidate.get("number") or 0))
     state = "merged" if pr.get("merged_at") else pr.get("state", "unknown")
-    return Result("found", pr, state=state)
+    return Result("submitted", pr, state=state)
 
 
-def report_text(student: Student, assignment: int, result: Result) -> str:
-    lines = [
-        f"# Assignment {assignment} review: {student.name or f'CSV row {student.row_number}'}", "",
-        f"- Student: {student.name or 'Missing'}",
-        f"- Email: {student.email or 'Missing'}",
-        f"- Repository: {f'https://github.com/{student.repo}' if student.repo else 'Unknown'}",
-        f"- Supplied PR URL: {student.url or 'Missing'}",
-        f"- Assignment: {assignment}",
-    ]
-    if result.kind == "found":
-        lines.extend(["- Status: Found", f"- PR: {result.primary['html_url']}", f"- PR status: {result.state}"])
-        if result.state == "closed":
-            lines.append("- Note: This PR is closed.")
-        elif result.state == "merged":
-            lines.append("- Note: This PR was closed by merging.")
-    elif result.kind == "warning":
-        lines.extend(["- Status: Warning", "", result.reason or "Input needs review."])
-    else:
-        lines.extend(["- Status: Error", "", f"Verification could not be completed: {result.reason}"])
-    lines.extend(["", "## Grade", "", "Grading pending.", ""])
-    return "\n".join(lines)
+def report_row(student: Student, assignment: int, result: Result) -> dict[str, str | int]:
+    note = result.reason or ""
+    if result.kind == "submitted" and result.state in ("closed", "merged"):
+        note = "PR is closed" if result.state == "closed" else "PR was closed by merging"
+    return {
+        "input_row": student.row_number or "",
+        "student_name": student.name,
+        "email": student.email,
+        "repo_url": student.url,
+        "repository_url": f"https://github.com/{student.repo}" if student.repo else "",
+        "assignment": assignment,
+        "status": "error" if result.kind == "unverifiable" else result.kind,
+        "pr_url": result.primary.get("html_url", "") if result.primary else "",
+        "pr_state": result.state or "",
+        "missing_items": ", ".join(student.missing),
+        "note": note,
+    }
 
 
-def write_reports(items: list[tuple[Student, int, Result]], output_dir: Path) -> list[Path]:
+def write_report(items: list[tuple[Student, int, Result]], output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    run_dir = Path(tempfile.mkdtemp(prefix="run-", dir=output_dir))
-    paths = []
-    for index, (student, assignment, result) in enumerate(items, start=1):
-        digest = hashlib.sha256(student.email.casefold().encode("utf-8")).hexdigest()[:10]
-        repo_slug = student.repo.replace("/", "-").lower() or f"row-{student.row_number}"
-        path = run_dir / f"{index:04d}-{repo_slug}-{digest}-assignment-{assignment}.md"
-        path.write_text(report_text(student, assignment, result), encoding="utf-8")
-        paths.append(path)
-    return paths
+    assignment = items[0][1]
+    with tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8", prefix=f"assignment-{assignment}-review-", suffix=".csv", dir=output_dir, delete=False) as handle:
+        writer = csv.DictWriter(handle, fieldnames=REPORT_FIELDS)
+        writer.writeheader()
+        writer.writerows(report_row(student, number, result) for student, number, result in items)
+        return Path(handle.name)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -187,24 +187,23 @@ def main(argv: list[str] | None = None) -> int:
             for assignment in assignments:
                 items.append((student, assignment, Result("warning", reason=student.issue)))
             continue
-        if student.url not in cache:
+        if student.repo not in cache:
             try:
-                cache[student.url] = fetch_pr(student.repo, student.pr_number)
+                cache[student.repo] = fetch_prs(student.repo)
             except LookupFailure as exc:
-                cache[student.url] = exc
+                cache[student.repo] = exc
         for assignment in assignments:
-            found = cache[student.url]
+            found = cache[student.repo]
             result = Result("unverifiable", reason=str(found)) if isinstance(found, LookupFailure) else select_pr(found, assignment)
             items.append((student, assignment, result))
     try:
-        paths = write_reports(items, output_dir)
+        path = write_report(items, output_dir)
     except OSError as exc:
         print(f"Could not write reports: {exc}")
         return 2
-    counts = {kind: sum(result.kind == kind for _, _, result in items) for kind in ("found", "warning", "unverifiable")}
-    print(f"Reports: {len(paths)} (found: {counts['found']}, warnings: {counts['warning']}, errors: {counts['unverifiable']})")
-    for path in paths:
-        print(path)
+    counts = {kind: sum(result.kind == kind for _, _, result in items) for kind in ("submitted", "not_submitted", "warning", "unverifiable")}
+    print(f"Students: {len(items)} (submitted: {counts['submitted']}, not submitted: {counts['not_submitted']}, warnings: {counts['warning']}, errors: {counts['unverifiable']})")
+    print(path)
     return 0 if not counts["warning"] and not counts["unverifiable"] else 1
 
 
