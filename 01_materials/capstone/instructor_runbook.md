@@ -1,6 +1,6 @@
 # Instructor runbook
 
-Display `index.html` beside the coding harness. Use a clean checkout of the course baseline for the live build, with the reference branch and a working API key ready separately. The live checkout must not contain `05_src/course_question_assistant` at the start.
+Display `index.html` beside the coding harness. Start from this branch with a working API key ready. The live build creates `05_src/course_question_assistant` during class.
 
 | Minute | Action | Point to make while the agent runs |
 | --- | --- | --- |
@@ -12,15 +12,14 @@ Display `index.html` beside the coding harness. Use a clean checkout of the cour
 | 38–42 | Show slide 13; trigger `/ce-code-review` and ask two test questions | Compare a supported question with an unrelated or misleading one. Mention the earlier document review and optional independent model pass. |
 | 42–45 | Show slides 14–15; trigger `/ce-compound` if a real lesson emerged | Record a verified lesson for the next iteration. Do not manufacture a lesson if the run went as planned. |
 
-At minute 33, if the live app is not runnable, switch to the prepared reference app and continue the discussion from its code and test results. If a review step is slow, show its current output and move to the evaluation questions. The teaching goal is the connection between process and AI engineering, not finishing every command on camera.
+At minute 33, if the live app is not runnable, inspect the plan, code, and test results produced so far. Discuss the next check the agent should run and continue to the evaluation questions. If a review step is slow, show its current output. The teaching goal is the connection between process and AI engineering, not finishing every command on camera.
 
 ## Before class
 
 1. Open the HTML deck at the intended half-screen size and verify that the PDF slide links work.
-2. Run the offline tests from `05_src/course_question_assistant/readme.md` in the reference branch.
-3. Run the app once with a configured `OPENAI_API_KEY`. Ask “How does embedding-based retrieval work?” and then “How does it compare with keyword search?”
-4. Prepare a separate clean checkout at the course baseline for the live run. Confirm that `05_src/course_question_assistant` is absent there.
-5. Keep the reference checkout available as the checkpoint. Avoid showing the `.secrets` file on screen.
+2. Confirm the Gradio and model dependencies in `pyproject.toml` are available and the API key is configured.
+3. Confirm that `05_src/course_question_assistant` is absent before the live run.
+4. Keep the build brief ready to paste into the harness. Avoid showing the `.secrets` file on screen.
 
 ## Discussion prompts
 
