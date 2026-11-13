@@ -12,7 +12,7 @@ from typing import NamedTuple
 from urllib.parse import urlparse
 
 
-DEFAULT_REPORTS = Path("03_instructional_team/review/reports")
+DEFAULT_REPORTS = Path(__file__).resolve().parent / "reports"
 ASSIGNMENT_BRANCH = {1: "assignment-1", 2: "assignment-2"}
 REPORT_FIELDS = ("input_row", "student_name", "email", "repo_url", "repository_url", "assignment", "status", "pr_url", "pr_state", "missing_items", "note")
 ASSIGNMENT_TITLE = re.compile(r"\bassignment[\s#:_-]*(?:0*([12])|(one|two))\b", re.IGNORECASE)

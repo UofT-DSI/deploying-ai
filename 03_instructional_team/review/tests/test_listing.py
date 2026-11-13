@@ -13,6 +13,13 @@ spec.loader.exec_module(review)
 
 
 class ListingInputTests(unittest.TestCase):
+    def test_default_report_directory_is_anchored_to_script(self):
+        _, _, output_dir = review.parse_input([
+            "--student", "Ada", "ada@example.com", "https://github.com/ada/deploying-ai/pulls",
+            "--assignment", "1",
+        ])
+        self.assertEqual(output_dir, script.parent / "reports")
+
     def test_pull_request_listing_url_identifies_repo(self):
         student = review.make_student("Ada", "ada@example.com", "https://github.com/ada/deploying-ai/pulls?q=is%3Apr")
         self.assertEqual(student.repo, "ada/deploying-ai")

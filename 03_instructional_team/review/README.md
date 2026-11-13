@@ -34,7 +34,7 @@ Then run:
 python 03_instructional_team/review/review.py --csv students.csv --assignment 2
 ```
 
-Use `--output-dir PATH` to choose where the report goes. By default, each run creates a new CSV under `03_instructional_team/review/reports`. The default reports directory is ignored by Git because the report contains student names and email addresses. If you choose another output directory, keep it private.
+Use `--output-dir PATH` to choose where the report goes. By default, each run creates a new CSV under `03_instructional_team/review/reports`, regardless of the current working directory. The default reports directory is ignored by Git because the report contains student names and email addresses. If you choose another output directory, keep it private.
 
 The CLI prints counts of `submitted`, `not_submitted`, `warning`, and `error` rows followed by the single CSV path. It derives the repository from the listing URL, checks open and closed PRs, and selects the newest PR whose title resembles the requested assignment (for example, `Assignment 1`, `Assignment #1`, or `Assignment one done`). If the title does not name an assignment, the assignment branch can identify it. The CSV includes the input row number, student's details, repository, assignment, status, selected PR link, PR state, missing input items, and a note for closed or merged PRs.
 
