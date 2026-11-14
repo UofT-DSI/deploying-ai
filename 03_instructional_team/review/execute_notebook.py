@@ -9,11 +9,12 @@ from nbclient import NotebookClient
 
 def main() -> int:
     source = Path(sys.argv[1])
-    destination = Path(sys.argv[2])
     notebook = nbformat.read(source, as_version=4)
+    documents = Path("/work/documents")
+    documents.symlink_to("/course/02_activities/documents", target_is_directory=True)
     client = NotebookClient(notebook, timeout=300, kernel_name="python3", allow_errors=True)
-    client.execute(cwd=str(source.parent))
-    nbformat.write(notebook, destination)
+    client.execute(cwd="/work")
+    sys.stdout.write(nbformat.writes(notebook))
     return 0
 
 

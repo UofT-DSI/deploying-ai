@@ -126,7 +126,33 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
                     continue
                 raw = item.get("text") or (item.get("data") or {}).get("text/plain") or item.get("evalue") or ""
                 outputs.append((i, "".join(raw) if isinstance(raw, list) else str(raw)))
-    output_text = "\n".join(value for _, value in outputs)
+    def field_value(text: str, name: str) -> str | None:
+        quoted = re.search(rf"\b{re.escape(name)}\s*[:=]\s*(['\"])(.*?)\1", text, re.I | re.S)
+        if quoted:
+            return quoted.group(2)
+        line = re.search(rf"(?:^|\n)\s*['\"]?{re.escape(name)}['\"]?\s*[:=]\s*([^\n,}}]+)", text, re.I)
+        return line.group(1).strip() if line else None
+
+    generated = next(((i, value) for i, value in outputs
+                      if field_value(value, "Relevance") is not None
+                      and field_value(value, "Summary") is not None), None)
+
+    def generated_field(name: str) -> tuple[str, str] | None:
+        if not generated:
+            return None
+        value = field_value(generated[1], name)
+        return (f"Output cell {generated[0]} {name}: {value[:100]}", value) if value else None
+
+    relevance = generated_field("Relevance")
+    summary = generated_field("Summary")
+    tone = generated_field("Tone")
+    output_tokens = generated_field("OutputTokens")
+
+    def summary_length() -> Part:
+        if summary and output_tokens and output_tokens[1].isdigit() and int(output_tokens[1]) <= 1000:
+            return Part("Summary at most 1,000 tokens", 2, 2, f"{output_tokens[0]} (whole response upper bound)")
+        return Part("Summary at most 1,000 tokens", 2, 0,
+                    "Summary-specific model token count unavailable; facilitator checks length", True)
 
     def match(pattern: str, flags: int = re.IGNORECASE) -> str | None:
         for i, source in code:
@@ -163,12 +189,36 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
         return None
 
     def applied_metric(name: str) -> str | None:
+        metrics = set()
+        applied = {}
         for i, source in code:
-            pattern = (r"\b(\w+)\s*=\s*SummarizationMetric\s*\(" if name == "summarization" else
-                       rf"\b(\w+)\s*=\s*GEval\s*\(\s*name\s*=\s*['\"]{re.escape(name)}['\"]")
-            assigned = re.search(pattern, source, re.I | re.S)
-            if assigned and re.search(rf"\b{re.escape(assigned.group(1))}\.measure\s*\(", combined):
-                return f"Code cell {i}: {assigned.group(1)} metric is measured"
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+                    func = node.value.func
+                    constructor = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+                    keywords = {keyword.arg: keyword.value for keyword in node.value.keywords}
+                    title = keywords.get("name")
+                    matches = constructor == "SummarizationMetric" if name == "summarization" else (
+                        constructor == "GEval" and isinstance(title, ast.Constant)
+                        and str(title.value).lower() == name)
+                    if matches:
+                        metrics.update(target.id for target in node.targets if isinstance(target, ast.Name))
+                if isinstance(node, ast.Call):
+                    if isinstance(node.func, ast.Attribute) and node.func.attr == "measure" and isinstance(node.func.value, ast.Name):
+                        applied[node.func.value.id] = i
+                    function = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+                    if function == "evaluate":
+                        for keyword in node.keywords:
+                            if keyword.arg == "metrics" and isinstance(keyword.value, (ast.List, ast.Tuple)):
+                                applied.update({item.id: i for item in keyword.value.elts if isinstance(item, ast.Name)})
+        used = metrics & applied.keys()
+        if used:
+            metric = sorted(used)[0]
+            return f"Code cell {applied[metric]}: {metric} metric is applied"
         return None
 
     def part(label: str, points: float, evidence: str | None, runtime: bool = False) -> Part:
@@ -207,11 +257,11 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
             part("Input and output usage", 5, match(r"\.usage\b") if match(r"InputTokens") and match(r"OutputTokens") else None),
         )),
         Criterion("Generated content", (
-            part("Professional relevance", 2, output(r"professional|career|practitioner") or match(r"professional development|AI professional"), runtime=True),
-            part("Relevance one paragraph", 2, output(r"Relevance.{10,}") if "\n\n" not in output_text else None, runtime=True),
-            part("Source-faithful summary", 2, (output(r"Summary.{30,}") or "") + " (facilitator verifies accuracy)" if output(r"Summary.{30,}") else None, runtime=True),
-            part("Summary at most 1,000 tokens", 2, output(r"Summary.{30,}") if len(output_text.split()) <= 1000 else None, runtime=True),
-            part("Distinguishable tone", 2, output(r"Tone.{4,}") or match(r"Victorian|Academic|Legalese|Bureaucratese"), runtime=True),
+            part("Professional relevance", 2, relevance[0] if relevance and re.search(r"professional|career|practitioner", relevance[1], re.I) else None, runtime=True),
+            part("Relevance one paragraph", 2, relevance[0] if relevance and "\n\n" not in relevance[1] else None, runtime=True),
+            part("Source-faithful summary", 2, summary[0] + " (facilitator verifies accuracy)" if summary else None, runtime=True),
+            summary_length(),
+            part("Distinguishable tone", 2, tone[0] if tone else None, runtime=True),
         )),
         Criterion("Summarization evaluation", (
             part("DeepEval summarization metric", 3, match(r"SummarizationMetric")),
@@ -230,7 +280,8 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
         )),
         Criterion("Structured evaluation result", tuple(
             part(f"{name} Score and Reason", 2.5,
-                 (output(rf"{name}Score") or match(rf"{name}Score")) if (output(rf"{name}Reason") or match(rf"{name}Reason")) else None,
+                 next((f"Output cell {i}: {name} Score and Reason" for i, value in outputs
+                       if field_value(value, f"{name}Score") and field_value(value, f"{name}Reason")), None),
                  runtime=True)
             for name in ("Summarization", "Coherence", "Tone", "Safety")
         )),

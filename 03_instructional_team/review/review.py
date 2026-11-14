@@ -13,6 +13,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import urllib.error
+import urllib.request
 import uuid
 from functools import lru_cache
 from pathlib import Path
@@ -21,6 +24,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from assignment_1_rubric import assess, grade_label
+from api_gateway import notebook_gateway
 
 
 DEFAULT_REPORTS = Path("03_instructional_team/review/reports")
@@ -31,7 +35,7 @@ COURSE_ROOT = Path(__file__).resolve().parents[2]
 def course_image_name() -> str:
     digest = hashlib.sha256()
     files = [COURSE_ROOT / "pyproject.toml", COURSE_ROOT / "uv.lock",
-             Path(__file__).with_name("Dockerfile")]
+             Path(__file__).with_name("Dockerfile"), Path(__file__).with_name("execute_notebook.py")]
     files.extend(sorted((COURSE_ROOT / "02_activities" / "documents").glob("*.pdf")))
     for source in files:
         digest.update(str(source.relative_to(COURSE_ROOT)).encode("utf-8"))
@@ -118,7 +122,10 @@ def fetch_assignment_snapshot(repo: str, pr: dict) -> AssignmentSnapshot:
     try:
         if payload["encoding"] != "base64":
             raise ValueError("unexpected content encoding")
-        notebook = json.loads(base64.b64decode(payload["content"], validate=True))
+        content = payload["content"]
+        if not isinstance(content, str):
+            raise ValueError("invalid content data")
+        notebook = json.loads(base64.b64decode(re.sub(r"[\t\n\r\f ]", "", content), validate=True))
         if (not isinstance(notebook, dict) or not isinstance(notebook.get("cells"), list)
                 or any(not isinstance(cell, dict) or not isinstance(cell.get("source", ""), (str, list))
                        or (isinstance(cell.get("source"), list) and any(not isinstance(line, str) for line in cell["source"]))
@@ -178,72 +185,127 @@ def prepare_container() -> str | None:
     if build_issue:
         return build_issue
     try:
-        probe = subprocess.run(["docker", "run", "--rm", "--env", "OPENAI_API_KEY", course_image_name(), "python", "-c",
-                                "import os,urllib.request; r=urllib.request.Request('https://api.openai.com/v1/models', headers={'Authorization':'Bearer '+os.environ['OPENAI_API_KEY']}); urllib.request.urlopen(r,timeout=15).close()"],
-                               capture_output=True, text=True, timeout=45, check=False)
-        if probe.returncode:
-            return "OpenAI service preflight failed: " + redact(probe.stderr.strip()[-400:])
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        request = urllib.request.Request("https://api.openai.com/v1/models",
+                                         headers={"Authorization": "Bearer " + os.environ["OPENAI_API_KEY"]})
+        with urllib.request.urlopen(request, timeout=15):
+            pass
+    except (OSError, urllib.error.HTTPError) as exc:
         return "OpenAI service preflight failed: " + redact(str(exc))
     return None
 
 
+MAX_NOTEBOOK_RESULT = 16 * 1024 * 1024
+MAX_DOCKER_ERROR = 64 * 1024
+
+
+def remove_container(name: str) -> None:
+    try:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=20, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def capture_docker(command: list[str], name: str) -> tuple[bytes | None, bytes, str | None]:
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output = [bytearray(), bytearray()]
+    exceeded = threading.Event()
+
+    def drain(stream, target: bytearray, limit: int) -> None:
+        while chunk := stream.read(65536):
+            remaining = limit - len(target)
+            target.extend(chunk[:remaining])
+            if len(chunk) > remaining:
+                exceeded.set()
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+                return
+
+    threads = [threading.Thread(target=drain, args=(process.stdout, output[0], MAX_NOTEBOOK_RESULT)),
+               threading.Thread(target=drain, args=(process.stderr, output[1], MAX_DOCKER_ERROR))]
+    for thread in threads:
+        thread.start()
+    issue = None
+    try:
+        process.wait(timeout=900)
+    except subprocess.TimeoutExpired:
+        issue = "Notebook execution timed out; facilitator review required"
+        process.kill()
+    except KeyboardInterrupt:
+        process.kill()
+        remove_container(name)
+        raise
+    finally:
+        for thread in threads:
+            thread.join(timeout=5)
+        process.stdout.close()
+        process.stderr.close()
+    if exceeded.is_set():
+        issue = "Notebook execution unavailable: output exceeded limit"
+    if issue:
+        remove_container(name)
+    return (bytes(output[0]) if not issue else None), bytes(output[1]), issue
+
+
 def run_notebook(notebook: dict) -> tuple[dict | None, str | None]:
     name = "assignment-review-" + uuid.uuid4().hex[:12]
-    def remove_container() -> None:
-        try:
-            subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=20, check=False)
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-
     with tempfile.TemporaryDirectory(prefix="assignment-review-") as tmp:
         folder = Path(tmp)
         (folder / "notebook.ipynb").write_text(json.dumps(notebook), encoding="utf-8")
-        shutil.copy2(Path(__file__).with_name("execute_notebook.py"), folder / "execute_notebook.py")
-        documents = folder / "documents"
-        documents.mkdir()
-        for source in (COURSE_ROOT / "02_activities" / "documents").glob("*.pdf"):
-            shutil.copy2(source, documents / source.name)
-        command = ["docker", "run", "--rm", "--name", name, "--read-only", "--tmpfs", "/tmp:rw,nosuid,size=512m",
-                   "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128", "--memory", "4g", "--cpus", "2",
-                   "--env", "OPENAI_API_KEY", "--env", "HOME=/tmp", "--env", "IPYTHONDIR=/tmp/ipython",
-                   "--mount", f"type=bind,source={folder.resolve()},target=/course/02_activities/submission",
-                   course_image_name(), "python", "/course/02_activities/submission/execute_notebook.py", "/course/02_activities/submission/notebook.ipynb",
-                   "/course/02_activities/submission/executed.ipynb"]
-        try:
-            completed = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False)
-        except subprocess.TimeoutExpired:
-            remove_container()
-            return None, "Notebook execution timed out; facilitator review required"
-        except KeyboardInterrupt:
-            remove_container()
-            raise
-        except OSError as exc:
-            return None, f"Docker execution failed: {redact(str(exc))}"
-        output = folder / "executed.ipynb"
-        if output.exists():
+        with notebook_gateway(os.environ.get("OPENAI_API_KEY")) as gateway:
+            command = ["docker", "run", "--rm", "--name", name, "--read-only",
+                       "--tmpfs", "/tmp:rw,nosuid,size=256m", "--tmpfs", "/work:rw,nosuid,size=512m",
+                       "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128",
+                       "--memory", "4g", "--cpus", "2", "--add-host", "host.docker.internal:host-gateway",
+                       "--env", "HOME=/work", "--env", "IPYTHONDIR=/work/ipython",
+                       "--mount", f"type=bind,source={folder.resolve()},target=/input,readonly"]
+            if gateway:
+                port, token = gateway
+                command.extend(("--env", f"OPENAI_API_KEY={token}", "--env", f"OPENAI_BASE_URL=http://host.docker.internal:{port}/v1"))
+            command.extend((course_image_name(), "python", "/course/execute_notebook.py", "/input/notebook.ipynb"))
             try:
-                executed = json.loads(output.read_text(encoding="utf-8"))
-                errors = [(i, item) for i, cell in enumerate(executed.get("cells", []), 1)
-                          for item in cell.get("outputs", []) if item.get("output_type") == "error"]
-                if errors:
-                    cell, error = errors[0]
-                    message = redact(str(error.get("evalue") or error.get("ename") or "unknown error"))
-                    error_name = str(error.get("ename", ""))
-                    student_error = error_name in {
-                        "NameError", "SyntaxError", "IndentationError", "TypeError", "AttributeError",
-                        "IndexError", "KeyError", "ZeroDivisionError", "AssertionError", "UnboundLocalError",
-                    }
-                    prefix = "Student" if student_error else "Environment"
-                    return executed, f"{prefix}: code cell {cell} raised {clean_error(message)}"
-                return executed, None
-            except (OSError, ValueError):
-                pass
-        return None, "Notebook execution unavailable: " + redact(completed.stderr.strip()[-400:])
+                raw, stderr, issue = capture_docker(command, name)
+            except OSError as exc:
+                return None, f"Docker execution failed: {redact(str(exc))}"
+        if issue:
+            return None, issue
+        try:
+            executed = json.loads(raw)
+        except (ValueError, TypeError, UnicodeError):
+            return None, "Notebook execution unavailable: " + redact(stderr.decode("utf-8", "replace")[-400:])
+        if not valid_execution_artifact(executed):
+            return None, "Notebook execution unavailable: invalid result shape"
+        errors = [(i, item) for i, cell in enumerate(executed["cells"], 1)
+                  for item in cell.get("outputs", []) if item.get("output_type") == "error"]
+        if errors:
+            cell, error = next(((i, item) for i, item in errors
+                                if str(item.get("ename", "")) not in STUDENT_ERRORS), errors[0])
+            message = redact(str(error.get("evalue") or error.get("ename") or "unknown error"))
+            prefix = "Student" if str(error.get("ename", "")) in STUDENT_ERRORS else "Environment"
+            return executed, f"{prefix}: code cell {cell} raised {clean_error(message)}"
+        return executed, None
 
 
 def clean_error(value: str) -> str:
     return value.replace("\r", " ").replace("\n", " ")[:300]
+
+
+STUDENT_ERRORS = {
+    "NameError", "SyntaxError", "IndentationError", "TypeError", "AttributeError",
+    "IndexError", "KeyError", "ZeroDivisionError", "AssertionError", "UnboundLocalError",
+}
+
+
+def valid_execution_artifact(value: object) -> bool:
+    if not isinstance(value, dict) or not isinstance(value.get("cells"), list):
+        return False
+    for cell in value["cells"]:
+        if not isinstance(cell, dict) or not isinstance(cell.get("outputs", []), list):
+            return False
+        if any(not isinstance(item, dict) for item in cell["outputs"]):
+            return False
+    return True
 
 
 def parse_listing_url(url: str) -> tuple[str, str]:

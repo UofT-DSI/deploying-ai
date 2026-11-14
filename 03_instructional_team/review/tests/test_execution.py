@@ -1,7 +1,9 @@
 import importlib.util
+import io
 import json
 import subprocess
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,66 +20,98 @@ class ExecutionTests(unittest.TestCase):
             self.assertIn("OPENAI_API_KEY", review.prepare_container())
         build.assert_not_called()
 
-    def test_container_receives_only_assignment_credential_and_returns_output(self):
+    def test_container_uses_read_only_input_and_proxy_token(self):
         notebook = {"cells": [{"cell_type": "code", "source": ["print('fixture')"]}]}
+        executed = {"cells": [{"outputs": [{"output_type": "stream", "text": "fixture"}]}]}
         seen = []
 
-        def fake_run(command, **kwargs):
+        def fake_capture(command, name):
             seen.append(command)
             self.assertEqual(command[:2], ["docker", "run"])
             self.assertIn("--read-only", command)
-            self.assertIn("--pids-limit", command)
-            self.assertEqual([command[i + 1] for i, value in enumerate(command[:-1]) if value == "--env"],
-                             ["OPENAI_API_KEY", "HOME=/tmp", "IPYTHONDIR=/tmp/ipython"])
-            mount = command[command.index("--mount") + 1]
-            folder = Path(mount.split(",target=")[0].removeprefix("type=bind,source="))
-            (folder / "executed.ipynb").write_text(json.dumps({"cells": [{"outputs": [{"text": "fixture"}]}]}), encoding="utf-8")
-            return subprocess.CompletedProcess(command, 0, "", "")
+            self.assertIn("/work:rw,nosuid,size=512m", command)
+            self.assertIn("readonly", command[command.index("--mount") + 1])
+            self.assertNotIn("real-secret", " ".join(command))
+            self.assertIn("OPENAI_API_KEY=proxy-token", command)
+            return json.dumps(executed).encode(), b"", None
 
-        with patch.object(review.subprocess, "run", side_effect=fake_run):
-            executed, issue = review.run_notebook(notebook)
+        with patch.dict(review.os.environ, {"OPENAI_API_KEY": "real-secret"}), \
+             patch.object(review, "notebook_gateway", return_value=nullcontext((8844, "proxy-token"))), \
+             patch.object(review, "capture_docker", side_effect=fake_capture):
+            result, issue = review.run_notebook(notebook)
         self.assertIsNone(issue)
-        self.assertEqual(executed["cells"][0]["outputs"][0]["text"], "fixture")
+        self.assertEqual(result, executed)
         self.assertEqual(len(seen), 1)
 
-    def test_timeout_removes_container(self):
-        def fake_run(command, **kwargs):
-            if command[:2] == ["docker", "run"]:
-                raise subprocess.TimeoutExpired(command, 900)
-            return subprocess.CompletedProcess(command, 0, "", "")
-
-        with patch.object(review.subprocess, "run", side_effect=fake_run) as run:
+    def test_malformed_executed_cell_is_unavailable_evidence(self):
+        with patch.object(review, "capture_docker", return_value=(b'{"cells":[null]}', b"", None)):
             executed, issue = review.run_notebook({"cells": []})
         self.assertIsNone(executed)
-        self.assertIn("timed out", issue)
-        self.assertEqual(run.call_args_list[-1].args[0][:3], ["docker", "rm", "-f"])
+        self.assertIn("unavailable", issue.lower())
 
-    def test_interrupt_removes_container(self):
-        def fake_run(command, **kwargs):
-            if command[:2] == ["docker", "run"]:
-                raise KeyboardInterrupt
-            return subprocess.CompletedProcess(command, 0, "", "")
-
-        with patch.object(review.subprocess, "run", side_effect=fake_run) as run:
-            with self.assertRaises(KeyboardInterrupt):
-                review.run_notebook({"cells": []})
-        self.assertEqual(run.call_args_list[-1].args[0][:3], ["docker", "rm", "-f"])
+    def test_later_service_error_is_not_hidden_by_name_error(self):
+        artifact = {"cells": [
+            {"outputs": [{"output_type": "error", "ename": "NameError", "evalue": "missing"}]},
+            {"outputs": [{"output_type": "error", "ename": "APIConnectionError", "evalue": "offline"}]},
+        ]}
+        with patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
+            _, issue = review.run_notebook({"cells": []})
+        self.assertTrue(issue.startswith("Environment:"))
 
     def test_service_error_is_distinguished_from_student_error(self):
-        def execute_with(error_name):
-            def fake_run(command, **kwargs):
-                mount = command[command.index("--mount") + 1]
-                folder = Path(mount.split(",target=")[0].removeprefix("type=bind,source="))
-                (folder / "executed.ipynb").write_text(json.dumps({"cells": [{"outputs": [
-                    {"output_type": "error", "ename": error_name, "evalue": error_name}]}]}), encoding="utf-8")
-                return subprocess.CompletedProcess(command, 0, "", "")
-            with patch.object(review.subprocess, "run", side_effect=fake_run):
-                return review.run_notebook({"cells": []})[1]
+        for name, prefix in (("APIConnectionError", "Environment:"), ("NameError", "Student:"),
+                             ("ModuleNotFoundError", "Environment:"), ("HTTPError", "Environment:")):
+            artifact = {"cells": [{"outputs": [{"output_type": "error", "ename": name, "evalue": name}]}]}
+            with self.subTest(name=name), patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
+                self.assertTrue(review.run_notebook({"cells": []})[1].startswith(prefix))
 
-        self.assertIn("Environment:", execute_with("APIConnectionError"))
-        self.assertIn("Student:", execute_with("NameError"))
-        self.assertIn("Environment:", execute_with("ModuleNotFoundError"))
-        self.assertIn("Environment:", execute_with("HTTPError"))
+    def test_timeout_removes_container(self):
+        process = self.fake_process()
+        process.wait = lambda **kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired("docker", 900))
+        with patch.object(review.subprocess, "Popen", return_value=process), \
+             patch.object(review, "remove_container") as remove:
+            output, _, issue = review.capture_docker(["docker", "run"], "test-container")
+        self.assertIsNone(output)
+        self.assertIn("timed out", issue)
+        self.assertTrue(process.killed)
+        remove.assert_called_once_with("test-container")
+
+    def test_output_over_limit_is_not_returned_to_grader(self):
+        process = self.fake_process()
+        process.stdout = io.BytesIO(b"oversized output")
+        with patch.object(review.subprocess, "Popen", return_value=process), \
+             patch.object(review, "MAX_NOTEBOOK_RESULT", 8), \
+             patch.object(review, "remove_container") as remove:
+            output, _, issue = review.capture_docker(["docker", "run"], "test-container")
+        self.assertIsNone(output)
+        self.assertIn("exceeded limit", issue)
+        self.assertTrue(process.killed)
+        remove.assert_called_once_with("test-container")
+
+    def test_interrupt_removes_container(self):
+        process = self.fake_process()
+        process.wait = lambda **kwargs: (_ for _ in ()).throw(KeyboardInterrupt())
+        with patch.object(review.subprocess, "Popen", return_value=process), \
+             patch.object(review, "remove_container") as remove:
+            with self.assertRaises(KeyboardInterrupt):
+                review.capture_docker(["docker", "run"], "test-container")
+        self.assertTrue(process.killed)
+        remove.assert_called_once_with("test-container")
+
+    @staticmethod
+    def fake_process():
+        class Process:
+            stdout = io.BytesIO()
+            stderr = io.BytesIO()
+            killed = False
+
+            def wait(self, **kwargs):
+                return 0
+
+            def kill(self):
+                self.killed = True
+
+        return Process()
 
 
 if __name__ == "__main__":

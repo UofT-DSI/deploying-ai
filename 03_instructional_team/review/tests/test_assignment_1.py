@@ -14,6 +14,12 @@ spec.loader.exec_module(review)
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_wrapped_base64_content_is_accepted(self):
+        pr = {"number": 7, "head": {"sha": "abc123", "repo": {"full_name": "ada/course"}}}
+        encoded = base64.b64encode(b'{"cells":[]}').decode()
+        payload = {"content": encoded[:8] + "\n  " + encoded[8:], "encoding": "base64"}
+        with patch.object(review, "github_api", side_effect=[payload, [], pr]):
+            self.assertEqual(review.fetch_assignment_snapshot("ada/course", pr).notebook, {"cells": []})
     def test_snapshot_uses_selected_head_and_assigned_path(self):
         pr = {
             "number": 7,
@@ -64,6 +70,43 @@ class SnapshotTests(unittest.TestCase):
 
 
 class RubricTests(unittest.TestCase):
+    def test_course_evaluate_call_counts_as_metric_application(self):
+        notebook = {"cells": [{"cell_type": "code", "source": [
+            "from deepeval.metrics import GEval, SummarizationMetric\n"
+            "summary_metric = SummarizationMetric(assessment_questions=[])\n"
+            "tone_metric = GEval(evaluation_steps=[], name='Tonality')\n"
+            "evaluate(test_cases=[case], metrics=[summary_metric, tone_metric])\n"
+        ]}]}
+        rows = {row.name: row for row in review.assess(notebook)}
+        self.assertEqual(rows["Summarization evaluation"].parts[-1].earned, 2)
+        self.assertEqual(rows["G-Eval quality checks"].parts[2].earned, 2)
+
+    def test_metric_defined_in_prior_cell_is_applied(self):
+        notebook = {"cells": [
+            {"cell_type": "code", "source": ["summary_metric = SummarizationMetric(assessment_questions=[])"]},
+            {"cell_type": "code", "source": ["evaluate(test_cases=[case], metrics=[summary_metric])"]},
+        ]}
+        row = next(row for row in review.assess(notebook) if row.name == "Summarization evaluation")
+        self.assertEqual(row.parts[-1].earned, 2)
+        self.assertIn("Code cell 2", row.parts[-1].evidence)
+
+    def test_unrelated_output_does_not_score_generated_fields(self):
+        notebook = {"cells": [{"cell_type": "code", "source": ["print('article')"]}]}
+        executed = {"cells": [{"outputs": [{"output_type": "stream", "text":
+            "A professional career article.\n\nSummary: " + "long " * 1001}]}]}
+        generated = next(row for row in review.assess(notebook, executed) if row.name == "Generated content")
+        self.assertEqual(generated.parts[0].earned, 0)
+        self.assertEqual(generated.parts[1].earned, 0)
+        self.assertEqual(generated.parts[3].earned, 0)
+
+    def test_structured_pair_requires_output(self):
+        notebook = {"cells": [{"cell_type": "code", "source": [
+            "class Scores:\n    SummarizationScore: float\n    SummarizationReason: str\n"
+            "raise NameError('missing')\n"
+        ]}]}
+        rows = {row.name: row for row in review.assess(notebook)}
+        self.assertEqual(rows["Structured evaluation result"].parts[0].earned, 0)
+
     def test_grade_boundaries(self):
         self.assertEqual([review.grade_label(x) for x in (24, 25, 64, 65)],
                          ["Missing", "Incomplete", "Incomplete", "Complete"])

@@ -1,18 +1,23 @@
-from course_chat.main import get_graph
+import sys
+from pathlib import Path
+from functools import lru_cache
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from assignment_chat.main import get_graph
 from langchain_core.messages import HumanMessage, AIMessage
 import gradio as gr
 from dotenv import load_dotenv
-import os
-
-from utils.logger import get_logger
-
-_logs = get_logger(__name__)
-
-llm = get_graph()
+import logging
 
 load_dotenv('.secrets')
+_logs = logging.getLogger(__name__)
 
-def course_chat(message: str, history: list[dict]) -> str:
+
+@lru_cache(maxsize=1)
+def graph():
+    return get_graph()
+
+def assignment_chat(message: str, history: list[dict]) -> str:
     langchain_messages = []
     n = 0
     _logs.debug(f"History: {history}")
@@ -29,13 +34,13 @@ def course_chat(message: str, history: list[dict]) -> str:
         "llm_calls": n
     }
 
-    response = llm.invoke(state)
+    response = graph().invoke(state)
     return response['messages'][len(response['messages']) - 1].content
 
 chat = gr.ChatInterface(
-    fn=course_chat
+    fn=assignment_chat
 )
 
 if __name__ == "__main__":
-    _logs.info('Starting Course Chat App...')
+    _logs.info('Starting Assignment Chat App...')
     chat.launch()
