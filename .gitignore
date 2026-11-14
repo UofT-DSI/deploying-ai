@@ -33,3 +33,6 @@ docs/
 *.txt
 
 *.zip
+
+# Local vector database
+**/chroma_db/
