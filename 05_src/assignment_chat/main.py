@@ -2,20 +2,18 @@
 
 import re
 
+from assignment_chat.prompts import return_instructions
+from assignment_chat.tools_conversion import convert_units
+from assignment_chat.tools_course_search import search_course_materials
+from assignment_chat.tools_weather import get_weather
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from assignment_chat.prompts import return_instructions
-from assignment_chat.tools_conversion import convert_units
-from assignment_chat.tools_course_search import search_course_materials
-from assignment_chat.tools_weather import get_weather
-
-
 RESTRICTED = re.compile(
     r"\b(?:cats?|dogs?|kitt(?:y|ies)|pupp(?:y|ies)|canines?|felines?|"
-    r"horoscopes?|zodiac|astrolog(?:y|ical)|aries|taurus|gemini|cancer|leo|virgo|"
+    r"horoscopes?|zodiac|star\s+signs?|astrolog(?:y|ical)|aries|taurus|gemini|cancer|leo|virgo|"
     r"libra|scorpio|sagittarius|capricorn|aquarius|pisces|taylor\s+swift)\b",
     re.IGNORECASE,
 )

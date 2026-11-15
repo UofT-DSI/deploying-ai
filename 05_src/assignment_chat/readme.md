@@ -18,7 +18,7 @@ The included semantic index is ready to query. No Chroma server, Postgres server
 2. **Course semantic search:** `tools_course_search.py` searches a committed persistent Chroma index of short sections from the course README, Assignment 2 instructions, and evaluator guide. `build_index.py` explains the indexing process; graders do not need to run it. The index uses TF-IDF followed by latent semantic analysis, with query projection data in `search_model.json`. The included data is below the assignment's 40 MB limit.
 3. **Unit conversion:** `tools_conversion.py` exposes Celsius/Fahrenheit and kilometres/miles conversions through function calling.
 
-The graph in `main.py` refuses requests about cats or dogs, horoscopes or Zodiac signs, and Taylor Swift before calling the model or a tool. `prompts.py` also instructs the model to follow these restrictions and to keep its system instructions private. The gate covers direct mentions of the restricted topics; facilitators should still test evasive wording and prompt injection during their own review.
+The graph in `main.py` refuses requests about cats or dogs, horoscopes or Zodiac signs (including “star sign”), and Taylor Swift before calling the model or a tool. `prompts.py` also instructs the model to follow these restrictions and to keep its system instructions private. The gate covers direct mentions of the restricted topics; facilitators should still test evasive wording and prompt injection during their own review.
 
 ## Submission
 

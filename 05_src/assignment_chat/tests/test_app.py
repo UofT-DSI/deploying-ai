@@ -4,7 +4,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 from assignment_chat import app, main
@@ -30,7 +29,7 @@ class SampleAppTests(unittest.TestCase):
                          ["first question", "first answer", "second question"])
 
     def test_restricted_topics_are_refused_before_model_call(self):
-        for question in ("Tell me about cats", "What's my horoscope?", "Who is Taylor Swift?"):
+        for question in ("Tell me about cats", "What's my horoscope?", "What's my star sign?", "Who is Taylor Swift?"):
             with self.subTest(question=question), patch.object(main, "init_chat_model") as model:
                 graph = main.get_graph()
                 reply = graph.invoke({"messages": [HumanMessage(content=question)]})
