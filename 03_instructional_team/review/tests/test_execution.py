@@ -14,6 +14,42 @@ spec.loader.exec_module(review)
 
 
 class ExecutionTests(unittest.TestCase):
+    def test_course_helper_change_invalidates_image_tag(self):
+        original_read = Path.read_bytes
+
+        def digest_with(content):
+            def fake_read(path):
+                return content if path.name == "clients.py" else original_read(path)
+
+            review.course_image_name.cache_clear()
+            with patch.object(Path, "read_bytes", fake_read):
+                return review.course_image_name()
+
+        before = digest_with(b"helper version one")
+        after = digest_with(b"helper version two")
+        review.course_image_name.cache_clear()
+        self.assertNotEqual(before, after)
+
+    def test_build_context_contains_only_trusted_course_helpers(self):
+        seen = []
+
+        def fake_run(command, **kwargs):
+            seen.append(command[:2])
+            if command[:2] == ["docker", "image"]:
+                return subprocess.CompletedProcess(command, 1, b"", b"")
+            if command[:2] == ["docker", "build"]:
+                context = Path(kwargs["cwd"])
+                self.assertTrue((context / "05_src/utils/clients.py").is_file())
+                self.assertTrue((context / "05_src/utils/logger.py").is_file())
+                self.assertFalse((context / "05_src/.secrets").exists())
+                self.assertEqual({file.name for file in (context / "02_activities/documents").iterdir()},
+                                 {"managing_oneself.pdf", "ai_report_2025.pdf"})
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+
+        with patch.object(review.subprocess, "run", side_effect=fake_run):
+            self.assertIsNone(review.build_image())
+        self.assertIn(["docker", "build"], seen)
+
     def test_missing_credential_is_environment_block(self):
         with patch.dict(review.os.environ, {}, clear=True), patch.object(review, "build_image") as build:
             self.assertIn("OPENAI_API_KEY", review.prepare_container())
@@ -81,6 +117,36 @@ class ExecutionTests(unittest.TestCase):
             artifact = {"cells": [{"outputs": [{"output_type": "error", "ename": name, "evalue": name}]}]}
             with self.subTest(name=name), patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
                 self.assertTrue(review.run_notebook({"cells": []})[1].startswith(prefix))
+
+    def test_unrelated_local_file_error_is_student_specific(self):
+        artifact = {"cells": [{"outputs": [{"output_type": "error", "ename": "FileNotFoundError",
+                                          "evalue": "[Errno 2] No such file: '/Users/ada/private/resume.txt'"}]}]}
+        with patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
+            _, issue = review.run_notebook({"cells": []})
+        self.assertEqual(issue, "Student: code cell 1 raised FileNotFoundError for an unrelated local file")
+
+    def test_invalid_api_request_is_student_specific(self):
+        artifact = {"cells": [{"outputs": [{"output_type": "error", "ename": "BadRequestError",
+                                          "evalue": "Error code: 400 - invalid request parameters"}]}]}
+        with patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
+            _, issue = review.run_notebook({"cells": []})
+        self.assertEqual(issue, "Student: code cell 1 raised Error code: 400 - invalid request parameters")
+
+    def test_missing_trusted_course_helper_file_is_pending(self):
+        artifact = {"cells": [{"outputs": [{"output_type": "error", "ename": "FileNotFoundError",
+                                          "evalue": "No such file: '/course/05_src/utils/clients.py'"}]}]}
+        with patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
+            _, issue = review.run_notebook({"cells": []})
+        self.assertEqual(issue, "Environment: code cell 1 could not access a trusted course file")
+
+    def test_ambiguous_assigned_pdf_error_is_pending(self):
+        artifact = {"metadata": {"assignment_review": {"unresolved": [
+            {"cell": 1, "reason": "ambiguous assigned PDF", "basename": "article.pdf"}]}},
+            "cells": [{"outputs": [{"output_type": "error", "ename": "FileNotFoundError",
+                                    "evalue": "No such file: '/Users/ada/article.pdf'"}]}]}
+        with patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
+            _, issue = review.run_notebook({"cells": []})
+        self.assertEqual(issue, "Environment: code cell 1 has an ambiguous assigned PDF reference")
 
     def test_timeout_removes_container(self):
         process = self.fake_process()

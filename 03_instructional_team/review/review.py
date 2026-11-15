@@ -25,17 +25,22 @@ from urllib.parse import urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from api_gateway import notebook_gateway
 from assignment_1_rubric import assess, grade_label
+from course_workspace import ASSIGNED_PDFS
 
 DEFAULT_REPORTS = Path("03_instructional_team/review/reports")
 COURSE_ROOT = Path(__file__).resolve().parents[2]
+COURSE_HELPERS = (Path("05_src/utils/clients.py"), Path("05_src/utils/logger.py"))
+COURSE_PDFS = tuple(Path("02_activities/documents") / name for name in ASSIGNED_PDFS)
 
 
 @lru_cache(maxsize=1)
 def course_image_name() -> str:
     digest = hashlib.sha256()
     files = [COURSE_ROOT / "pyproject.toml", COURSE_ROOT / "uv.lock",
-             Path(__file__).with_name("Dockerfile"), Path(__file__).with_name("execute_notebook.py")]
-    files.extend(sorted((COURSE_ROOT / "02_activities" / "documents").glob("*.pdf")))
+             Path(__file__).with_name("Dockerfile"), Path(__file__).with_name("execute_notebook.py"),
+             Path(__file__).with_name("course_workspace.py")]
+    files.extend(COURSE_ROOT / pdf for pdf in COURSE_PDFS)
+    files.extend(COURSE_ROOT / helper for helper in COURSE_HELPERS)
     for source in files:
         digest.update(str(source.relative_to(COURSE_ROOT)).encode("utf-8"))
         digest.update(source.read_bytes())
@@ -45,6 +50,7 @@ def course_image_name() -> str:
 ASSIGNMENT_BRANCH = {1: "assignment-1", 2: "assignment-2"}
 REPORT_FIELDS = ("input_row", "student_name", "email", "repo_url", "repository_url", "assignment", "status", "pr_url", "pr_state", "missing_items", "note")
 ASSIGNMENT_TITLE = re.compile(r"\bassignment[\s#:_-]*(?:0*([12])|(one|two))\b", re.IGNORECASE)
+LOCAL_PATH = re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|/(?:Users|home|content)/)[^'\"\r\n|]+", re.IGNORECASE)
 
 
 class Student(NamedTuple):
@@ -164,10 +170,15 @@ def build_image() -> str | None:
             review_dir.mkdir(parents=True)
             shutil.copy2(Path(__file__).with_name("Dockerfile"), review_dir / "Dockerfile")
             shutil.copy2(Path(__file__).with_name("execute_notebook.py"), review_dir / "execute_notebook.py")
+            shutil.copy2(Path(__file__).with_name("course_workspace.py"), review_dir / "course_workspace.py")
             documents = context / "02_activities" / "documents"
             documents.mkdir(parents=True)
-            for source in (COURSE_ROOT / "02_activities" / "documents").glob("*.pdf"):
-                shutil.copy2(source, documents / source.name)
+            for relative in COURSE_PDFS:
+                shutil.copy2(COURSE_ROOT / relative, documents / relative.name)
+            helpers = context / "05_src" / "utils"
+            helpers.mkdir(parents=True)
+            for relative in COURSE_HELPERS:
+                shutil.copy2(COURSE_ROOT / relative, helpers / relative.name)
             build = subprocess.run(["docker", "build", "-f", "03_instructional_team/review/Dockerfile", "-t", course_image_name(), "."],
                                    cwd=context, capture_output=True, text=True, timeout=1800, check=False)
         if build.returncode:
@@ -278,21 +289,40 @@ def run_notebook(notebook: dict) -> tuple[dict | None, str | None]:
         errors = [(i, item) for i, cell in enumerate(executed["cells"], 1)
                   for item in cell.get("outputs", []) if item.get("output_type") == "error"]
         if errors:
-            cell, error = next(((i, item) for i, item in errors
-                                if str(item.get("ename", "")) not in STUDENT_ERRORS), errors[0])
-            message = redact(str(error.get("evalue") or error.get("ename") or "unknown error"))
-            prefix = "Student" if str(error.get("ename", "")) in STUDENT_ERRORS else "Environment"
-            return executed, f"{prefix}: code cell {cell} raised {clean_error(message)}"
+            outcomes = [classify_execution_error(i, item, executed) for i, item in errors]
+            return executed, next((issue for issue in outcomes if issue.startswith("Environment:")), outcomes[0])
         return executed, None
 
 
+def classify_execution_error(cell: int, error: dict, executed: dict) -> str:
+    name = str(error.get("ename", ""))
+    message = redact(str(error.get("evalue") or name or "unknown error"))
+    metadata = executed.get("metadata") or {}
+    review = metadata.get("assignment_review") if isinstance(metadata, dict) else None
+    unresolved = review.get("unresolved", []) if isinstance(review, dict) else []
+    if name == "FileNotFoundError":
+        for record in unresolved if isinstance(unresolved, list) else []:
+            if (isinstance(record, dict) and record.get("cell") == cell
+                    and record.get("reason") == "ambiguous assigned PDF"
+                    and isinstance(record.get("basename"), str) and record["basename"] in message):
+                return f"Environment: code cell {cell} has an ambiguous assigned PDF reference"
+        if any(article in message.lower() for article in ASSIGNED_PDFS):
+            return f"Environment: code cell {cell} could not access an assigned course PDF"
+        if "/course/05_src/" in message or "/dsi_deploying_ai_2026/05_src/" in message:
+            return f"Environment: code cell {cell} could not access a trusted course file"
+        return f"Student: code cell {cell} raised FileNotFoundError for an unrelated local file"
+    prefix = "Student" if name in STUDENT_ERRORS else "Environment"
+    return f"{prefix}: code cell {cell} raised {clean_error(message)}"
+
+
 def clean_error(value: str) -> str:
-    return value.replace("\r", " ").replace("\n", " ")[:300]
+    return LOCAL_PATH.sub("[local path]", value).replace("\r", " ").replace("\n", " ")[:300]
 
 
 STUDENT_ERRORS = {
     "NameError", "SyntaxError", "IndentationError", "TypeError", "AttributeError",
     "IndexError", "KeyError", "ZeroDivisionError", "AssertionError", "UnboundLocalError",
+    "BadRequestError",
 }
 
 
@@ -451,9 +481,9 @@ def write_report(items: list[tuple[Student, int, Result]], output_dir: Path) -> 
 
 def write_assignment_report(path: Path, student: Student, result: Result,
                             snapshot: AssignmentSnapshot | None, criteria: tuple | None,
-                            execution_note: str | None) -> None:
+                            execution_note: str | None, substitutions: list[dict] | None = None) -> None:
     def clean(value: object) -> str:
-        return redact(str(value or "")).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+        return LOCAL_PATH.sub("[local path]", redact(str(value or ""))).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
     lines = ["# Assignment 1 — Draft assessment", "", f"- Student: {clean(student.name) or 'Unknown'}",
              f"- Email: {clean(student.email) or 'Missing'}",
@@ -486,6 +516,12 @@ def write_assignment_report(path: Path, student: Student, result: Result,
         lines.extend(f"- {name}: demonstrate {part.label.lower()} and show the result in the notebook." for name, part in missed)
         if not missed:
             lines.append("- No scored gaps were identified; confirm the provisional judgments against the source article.")
+        if substitutions:
+            lines.extend(["", "## Assigned PDF substitutions", ""])
+            for record in substitutions:
+                if (isinstance(record, dict) and isinstance(record.get("cell"), int)
+                        and record["cell"] > 0 and record.get("article") in ASSIGNED_PDFS):
+                    lines.append(f"- Code cell {record['cell']}: {record['article']} (course copy).")
         if execution_note:
             lines.extend(["", "## Execution note", "", clean(execution_note)])
         lines.extend(["", "## Submission format (outside points)", "",
@@ -526,6 +562,7 @@ def main(argv: list[str] | None = None) -> int:
             snapshot = None
             criteria = None
             execution_note = None
+            substitutions = []
             if result.kind == "submitted":
                 try:
                     snapshot = fetch_assignment_snapshot(student.repo, result.primary)
@@ -541,19 +578,23 @@ def main(argv: list[str] | None = None) -> int:
                             executed, execution_note = None, "Evaluator setup failed: " + redact(str(exc))
                     blocked = execution_note if not executed or (execution_note or "").startswith("Environment:") else None
                     criteria = assess(snapshot.notebook, executed, blocked)
+                    metadata = (executed or {}).get("metadata") or {}
+                    details = metadata.get("assignment_review") if isinstance(metadata, dict) else None
+                    if isinstance(details, dict) and isinstance(details.get("substitutions"), list):
+                        substitutions = details["substitutions"]
                 except NotebookMissing as exc:
                     result = Result("warning", result.primary, result.state, str(exc))
                 except LookupFailure as exc:
                     result = Result("unverifiable", result.primary, result.state, str(exc))
             updated_items.append((student, assignment, result))
-            assessments.append((student, result, snapshot, criteria, execution_note))
+            assessments.append((student, result, snapshot, criteria, execution_note, substitutions))
         items = updated_items
     try:
         path = write_report(items, output_dir)
         if assignments == (1,):
-            for index, (student, result, snapshot, criteria, execution_note) in enumerate(assessments, 1):
+            for index, (student, result, snapshot, criteria, execution_note, substitutions) in enumerate(assessments, 1):
                 write_assignment_report(path.with_name(f"{path.stem}-student-{index}.md"), student, result,
-                                        snapshot, criteria, execution_note)
+                                        snapshot, criteria, execution_note, substitutions)
     except OSError as exc:
         print(f"Could not write reports: {exc}")
         return 2

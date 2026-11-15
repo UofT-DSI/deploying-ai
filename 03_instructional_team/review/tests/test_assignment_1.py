@@ -131,8 +131,8 @@ class RubricTests(unittest.TestCase):
 
         notebook["cells"][1]["source"] = ["revised = improve(summary)\nmetric.measure(revised)"]
         notebook["cells"].append({"cell_type": "code", "source": [
-            "display(Markdown(f'**Score**: {metric.score}'))\n"
-            "display(Markdown(f'**Reason**: {metric.reason}'))"
+            ("display(Markdown(f'**Score**: {metric.score}'))\n"
+             "display(Markdown(f'**Reason**: {metric.reason}'))")
         ]})
         course_style = {"cells": [
             {"outputs": []},
@@ -152,8 +152,8 @@ class RubricTests(unittest.TestCase):
             {"cell_type": "markdown", "source": ["# Enhancement"]},
             {"cell_type": "code", "source": ["metric.measure(revised)"]},
             {"cell_type": "code", "source": [
-                "display(Markdown(f'**Score**: {other_metric.score}'))\n"
-                "display(Markdown(f'**Reason**: {metric.reason}'))"
+                ("display(Markdown(f'**Score**: {other_metric.score}'))\n"
+                 "display(Markdown(f'**Reason**: {metric.reason}'))")
             ]},
         ]}
         executed = {"cells": [
@@ -266,8 +266,59 @@ class RubricTests(unittest.TestCase):
         self.assertIn("wrong-name", report)
         self.assertNotIn("secret-value", report)
 
+    def test_report_records_assigned_pdf_substitution_without_local_path(self):
+        student = review.make_student("Ada", "ada@example.com", "https://github.com/ada/course/pulls")
+        pr = {"html_url": "https://github.com/ada/course/pull/7"}
+        notebook = {"cells": [{"cell_type": "code", "source": ["path = '/Users/ada/Downloads/managing_oneself.pdf'"]}]}
+        snapshot = review.AssignmentSnapshot("abc123", notebook, ("02_activities/assignment_1.ipynb",), "assignment-1")
+        rows = review.assess(notebook)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.md"
+            review.write_assignment_report(path, student, review.Result("submitted", pr, "open"), snapshot, rows,
+                                           None, substitutions=[{"cell": 1, "article": "managing_oneself.pdf"}])
+            report = path.read_text(encoding="utf-8")
+        self.assertIn("Code cell 1: managing_oneself.pdf", report)
+        self.assertNotIn("/Users/ada/Downloads", report)
+
+    def test_student_file_failure_retains_earlier_observed_output(self):
+        notebook = {"cells": [
+            {"cell_type": "code", "source": ["print(result)"]},
+            {"cell_type": "code", "source": ["open('/Users/ada/private/resume.txt')"]},
+        ]}
+        executed = {"cells": [
+            {"outputs": [{"output_type": "stream", "text":
+                          "Relevance: Relevant to professional growth\nSummary: A concise source summary\nTone: professional"}]},
+            {"outputs": [{"output_type": "error", "ename": "FileNotFoundError", "evalue": "missing"}]},
+        ]}
+        generated = next(row for row in review.assess(notebook, executed) if row.name == "Generated content")
+        self.assertGreater(generated.earned, 0)
+        self.assertEqual(generated.parts[0].earned, 2)
+        self.assertEqual(generated.parts[1].earned, 2)
+
 
 class CliReportTests(unittest.TestCase):
+    def test_substitution_record_does_not_carry_to_next_student(self):
+        pr = {"number": 7, "title": "Assignment 1", "head": {"sha": "abc123", "ref": "assignment-1"},
+              "state": "open", "html_url": "https://github.com/ada/course/pull/7"}
+        notebook = {"cells": [{"cell_type": "code", "source": ["print('done')"]}]}
+        snapshot = review.AssignmentSnapshot("abc123", notebook, ("02_activities/assignment_1.ipynb",), "assignment-1")
+        first = {"cells": [{"outputs": []}], "metadata": {"assignment_review": {"substitutions": [
+            {"cell": 1, "article": "managing_oneself.pdf"}]}}}
+        second = {"cells": [{"outputs": []}], "metadata": {"assignment_review": {"substitutions": []}}}
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(review, "fetch_prs", return_value=[pr]), \
+                 patch.object(review, "fetch_assignment_snapshot", return_value=snapshot), \
+                 patch.object(review, "prepare_container", return_value=None), \
+                 patch.object(review, "run_notebook", side_effect=[(first, None), (second, None)]):
+                status = review.main(["--student", "Ada", "ada@example.com", "https://github.com/ada/course/pulls",
+                                      "--student", "Grace", "grace@example.com", "https://github.com/grace/course/pulls",
+                                      "--assignment", "1", "--output-dir", tmp])
+            reports = sorted(Path(tmp).glob("assignment-1-review-*-student-*.md"))
+            self.assertEqual(status, 0)
+            self.assertEqual(len(reports), 2)
+            self.assertIn("managing_oneself.pdf (course copy)", reports[0].read_text(encoding="utf-8"))
+            self.assertNotIn("Assigned PDF substitutions", reports[1].read_text(encoding="utf-8"))
+
     def test_malformed_execution_does_not_stop_next_student_report(self):
         pr = {"number": 7, "title": "Assignment 1", "head": {"sha": "abc123", "ref": "assignment-1"},
               "state": "open", "html_url": "https://github.com/ada/course/pull/7"}
