@@ -7,7 +7,6 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-
 script = Path(__file__).resolve().parents[1] / "review.py"
 spec = importlib.util.spec_from_file_location("assignment_review_execution", script)
 review = importlib.util.module_from_spec(spec)
@@ -44,10 +43,28 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(len(seen), 1)
 
     def test_malformed_executed_cell_is_unavailable_evidence(self):
-        with patch.object(review, "capture_docker", return_value=(b'{"cells":[null]}', b"", None)):
+        artifacts = (
+            {"cells": [None]},
+            {"cells": [{"outputs": [None]}]},
+            {"cells": [{"outputs": [{"output_type": "display_data", "data": "bad"}]}]},
+            {"cells": [{"outputs": [{"output_type": "stream", "text": ["ok", 7]}]}]},
+            {"cells": [{"outputs": [{"output_type": "display_data", "data": {"text/markdown": ["Score: 1", 7]}}]}]},
+        )
+        for artifact in artifacts:
+            with self.subTest(artifact=artifact), patch.object(
+                review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)
+            ):
+                executed, issue = review.run_notebook({"cells": []})
+            self.assertIsNone(executed)
+            self.assertIn("unavailable", issue.lower())
+
+    def test_executed_markdown_cell_needs_no_outputs_field(self):
+        artifact = {"cells": [{"cell_type": "markdown", "source": "instructions"},
+                              {"cell_type": "code", "outputs": []}]}
+        with patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
             executed, issue = review.run_notebook({"cells": []})
-        self.assertIsNone(executed)
-        self.assertIn("unavailable", issue.lower())
+        self.assertIsNone(issue)
+        self.assertEqual(executed, artifact)
 
     def test_later_service_error_is_not_hidden_by_name_error(self):
         artifact = {"cells": [
@@ -92,9 +109,9 @@ class ExecutionTests(unittest.TestCase):
         process = self.fake_process()
         process.wait = lambda **kwargs: (_ for _ in ()).throw(KeyboardInterrupt())
         with patch.object(review.subprocess, "Popen", return_value=process), \
-             patch.object(review, "remove_container") as remove:
-            with self.assertRaises(KeyboardInterrupt):
-                review.capture_docker(["docker", "run"], "test-container")
+             patch.object(review, "remove_container") as remove, \
+             self.assertRaises(KeyboardInterrupt):
+            review.capture_docker(["docker", "run"], "test-container")
         self.assertTrue(process.killed)
         remove.assert_called_once_with("test-container")
 

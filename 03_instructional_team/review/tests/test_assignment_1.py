@@ -3,9 +3,9 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
-
 
 script = Path(__file__).resolve().parents[1] / "review.py"
 spec = importlib.util.spec_from_file_location("assignment_review", script)
@@ -39,9 +39,9 @@ class SnapshotTests(unittest.TestCase):
     def test_moving_pr_is_rejected(self):
         pr = {"number": 7, "head": {"sha": "abc123", "repo": {"full_name": "ada/course"}}}
         payload = {"content": base64.b64encode(b'{"cells":[]}').decode(), "encoding": "base64"}
-        with patch.object(review, "github_api", side_effect=[payload, [], {"head": {"sha": "new123"}}]):
-            with self.assertRaises(review.LookupFailure):
-                review.fetch_assignment_snapshot("ada/course", pr)
+        with patch.object(review, "github_api", side_effect=[payload, [], {"head": {"sha": "new123"}}]), \
+             self.assertRaises(review.LookupFailure):
+            review.fetch_assignment_snapshot("ada/course", pr)
 
     def test_deleted_head_repo_is_lookup_error(self):
         pr = {"number": 7, "head": {"sha": "abc123", "repo": None}}
@@ -51,31 +51,31 @@ class SnapshotTests(unittest.TestCase):
     def test_invalid_notebook_is_student_specific_failure(self):
         pr = {"number": 7, "head": {"sha": "abc123", "repo": {"full_name": "ada/course"}}}
         payload = {"content": base64.b64encode(b'{"cells":[null]}').decode(), "encoding": "base64"}
-        with patch.object(review, "github_api", return_value=payload):
-            with self.assertRaises(review.NotebookMissing):
-                review.fetch_assignment_snapshot("ada/course", pr)
+        with patch.object(review, "github_api", return_value=payload), \
+             self.assertRaises(review.NotebookMissing):
+            review.fetch_assignment_snapshot("ada/course", pr)
 
     def test_invalid_base64_is_student_specific_failure(self):
         pr = {"number": 7, "head": {"sha": "abc123", "repo": {"full_name": "ada/course"}}}
-        with patch.object(review, "github_api", return_value={"content": "not base64!", "encoding": "base64"}):
-            with self.assertRaises(review.NotebookMissing):
-                review.fetch_assignment_snapshot("ada/course", pr)
+        with patch.object(review, "github_api", return_value={"content": "not base64!", "encoding": "base64"}), \
+             self.assertRaises(review.NotebookMissing):
+            review.fetch_assignment_snapshot("ada/course", pr)
 
     def test_malformed_pr_files_are_lookup_error(self):
         pr = {"number": 7, "head": {"sha": "abc123", "repo": {"full_name": "ada/course"}}}
         payload = {"content": base64.b64encode(b'{"cells":[]}').decode(), "encoding": "base64"}
-        with patch.object(review, "github_api", side_effect=[payload, {"bad": "shape"}, pr]):
-            with self.assertRaises(review.LookupFailure):
-                review.fetch_assignment_snapshot("ada/course", pr)
+        with patch.object(review, "github_api", side_effect=[payload, {"bad": "shape"}, pr]), \
+             self.assertRaises(review.LookupFailure):
+            review.fetch_assignment_snapshot("ada/course", pr)
 
 
 class RubricTests(unittest.TestCase):
     def test_course_evaluate_call_counts_as_metric_application(self):
         notebook = {"cells": [{"cell_type": "code", "source": [
-            "from deepeval.metrics import GEval, SummarizationMetric\n"
+            ("from deepeval.metrics import GEval, SummarizationMetric\n"
             "summary_metric = SummarizationMetric(assessment_questions=[])\n"
             "tone_metric = GEval(evaluation_steps=[], name='Tonality')\n"
-            "evaluate(test_cases=[case], metrics=[summary_metric, tone_metric])\n"
+            "evaluate(test_cases=[case], metrics=[summary_metric, tone_metric])\n")
         ]}]}
         rows = {row.name: row for row in review.assess(notebook)}
         self.assertEqual(rows["Summarization evaluation"].parts[-1].earned, 2)
@@ -101,11 +101,94 @@ class RubricTests(unittest.TestCase):
 
     def test_structured_pair_requires_output(self):
         notebook = {"cells": [{"cell_type": "code", "source": [
-            "class Scores:\n    SummarizationScore: float\n    SummarizationReason: str\n"
-            "raise NameError('missing')\n"
+            ("class Scores:\n    SummarizationScore: float\n    SummarizationReason: str\n"
+            "raise NameError('missing')\n")
         ]}]}
         rows = {row.name: row for row in review.assess(notebook)}
         self.assertEqual(rows["Structured evaluation result"].parts[0].earned, 0)
+
+    def test_revised_summary_evaluation_requires_observed_result(self):
+        notebook = {"cells": [
+            {"cell_type": "markdown", "source": ["# Enhancement"]},
+            {"cell_type": "code", "source": ["revised = improve(summary)\nmetric.measure(revised)\nprint(metric.score, metric.reason)"]},
+        ]}
+        failed = {"cells": [
+            {"outputs": []},
+            {"outputs": [
+                {"output_type": "stream", "text": "Score: 0.8\nReason: old result"},
+                {"output_type": "error", "ename": "NameError", "evalue": "improve is missing"},
+            ]},
+        ]}
+        observed = {"cells": [
+            {"outputs": []},
+            {"outputs": [{"output_type": "stream", "text": "Score: 0.8\nReason: Improved clarity"}]},
+        ]}
+        def earned(executed):
+            row = next(row for row in review.assess(notebook, executed) if row.name == "Enhancement and reflection")
+            return row.parts[2].earned
+        self.assertEqual(earned(failed), 0)
+        self.assertEqual(earned(observed), 3)
+
+        notebook["cells"][1]["source"] = ["revised = improve(summary)\nmetric.measure(revised)"]
+        notebook["cells"].append({"cell_type": "code", "source": [
+            "display(Markdown(f'**Score**: {metric.score}'))\n"
+            "display(Markdown(f'**Reason**: {metric.reason}'))"
+        ]})
+        course_style = {"cells": [
+            {"outputs": []},
+            {"outputs": []},
+            {"outputs": [
+                {"output_type": "display_data", "data": {"text/markdown": "**Score**: 0.8"}},
+                {"output_type": "display_data", "data": {"text/markdown": "**Reason**: Improved clarity"}},
+            ]},
+        ]}
+        row = next(row for row in review.assess(notebook, course_style) if row.name == "Enhancement and reflection")
+        self.assertEqual(row.parts[2].earned, 3)
+        self.assertIn("Code cell 2", row.parts[2].evidence)
+        self.assertIn("Output cell 3", row.parts[2].evidence)
+
+    def test_revised_summary_does_not_borrow_another_metric_result(self):
+        notebook = {"cells": [
+            {"cell_type": "markdown", "source": ["# Enhancement"]},
+            {"cell_type": "code", "source": ["metric.measure(revised)"]},
+            {"cell_type": "code", "source": [
+                "display(Markdown(f'**Score**: {other_metric.score}'))\n"
+                "display(Markdown(f'**Reason**: {metric.reason}'))"
+            ]},
+        ]}
+        executed = {"cells": [
+            {"outputs": []},
+            {"outputs": []},
+            {"outputs": [
+                {"output_type": "display_data", "data": {"text/markdown": "**Score**: 0.8"}},
+                {"output_type": "display_data", "data": {"text/markdown": "**Reason**: Improved clarity"}},
+            ]},
+        ]}
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Enhancement and reflection")
+        self.assertEqual(row.parts[2].earned, 0)
+
+        notebook["cells"][2]["source"] = ["display(Markdown(f'**Score**: {metric.score}'))"]
+        notebook["cells"].append({"cell_type": "code", "source": ["display(Markdown(f'**Reason**: {metric.reason}'))"]})
+        executed["cells"][2]["outputs"] = executed["cells"][2]["outputs"][:1]
+        executed["cells"].append({"outputs": [
+            {"output_type": "display_data", "data": {"text/markdown": "**Reason**: Improved clarity"}}
+        ]})
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Enhancement and reflection")
+        self.assertEqual(row.parts[2].earned, 0)
+
+    def test_revised_summary_comment_is_not_an_evaluation(self):
+        notebook = {"cells": [
+            {"cell_type": "markdown", "source": ["# Enhancement"]},
+            {"cell_type": "code", "source": [
+                "# metric.measure(revised)\nprint('Score: 0.8\\nReason: old result')"
+            ]},
+        ]}
+        executed = {"cells": [
+            {"outputs": []},
+            {"outputs": [{"output_type": "stream", "text": "Score: 0.8\nReason: old result"}]},
+        ]}
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Enhancement and reflection")
+        self.assertEqual(row.parts[2].earned, 0)
 
     def test_grade_boundaries(self):
         self.assertEqual([review.grade_label(x) for x in (24, 25, 64, 65)],
@@ -127,14 +210,14 @@ class RubricTests(unittest.TestCase):
 
     def test_partial_credit_and_pending_execution(self):
         notebook = {"cells": [{"cell_type": "code", "source": [
-            "from pydantic import BaseModel\nclass Result(BaseModel):\n"
+            ("from pydantic import BaseModel\nclass Result(BaseModel):\n"
             "    Author: str\n    Title: str\n    Relevance: str\n    Summary: str\n"
             "    Tone: str\n    InputTokens: int\n"
             "questions = ['How does the author define feedback?', 'Why is strength important?',"
             " 'What evidence supports the thesis?']\n"
             "from deepeval.metrics import SummarizationMetric\n"
             "metric = SummarizationMetric(assessment_questions=questions)\n"
-            "from openai import OpenAI\nclient = OpenAI()\n"
+            "from openai import OpenAI\nclient = OpenAI()\n")
         ]}]}
         rows = review.assess(notebook, blocked="API unavailable")
         self.assertEqual(sum(row.available for row in rows), 100)
@@ -147,11 +230,11 @@ class RubricTests(unittest.TestCase):
 
     def test_g_eval_questions_are_counted_per_metric(self):
         notebook = {"cells": [{"cell_type": "code", "source": [
-            "from deepeval.metrics import GEval\n"
+            ("from deepeval.metrics import GEval\n"
             "tone = GEval(name='Tonality', evaluation_steps=['Does the voice stay formal?',"
             " 'Is the chosen tone recognizable?', 'Does wording remain consistent?'])\n"
             "safety = GEval(name='Safety', evaluation_steps=['Does it avoid harmful advice?'])\n"
-            "tone.measure(case)\n"
+            "tone.measure(case)\n")
         ]}]}
         row = next(item for item in review.assess(notebook) if item.name == "G-Eval quality checks")
         self.assertEqual(row.available, 15)
@@ -185,6 +268,30 @@ class RubricTests(unittest.TestCase):
 
 
 class CliReportTests(unittest.TestCase):
+    def test_malformed_execution_does_not_stop_next_student_report(self):
+        pr = {"number": 7, "title": "Assignment 1", "head": {"sha": "abc123", "ref": "assignment-1"},
+              "state": "open", "html_url": "https://github.com/ada/course/pull/7"}
+        notebook = {"cells": [{"cell_type": "code", "source": ["from openai import OpenAI"]}]}
+        snapshot = review.AssignmentSnapshot("abc123", notebook, ("02_activities/assignment_1.ipynb",), "assignment-1")
+        malformed = {"cells": [{"outputs": [{"output_type": "display_data", "data": "invalid"}]}]}
+        valid = {"cells": [{"outputs": [{"output_type": "stream", "text": "completed extraction of enough article text to cite in this report"}]}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(review, "fetch_prs", return_value=[pr]), \
+                 patch.object(review, "fetch_assignment_snapshot", return_value=snapshot), \
+                 patch.object(review, "prepare_container", return_value=None), \
+                 patch.object(review, "notebook_gateway", return_value=nullcontext(None)), \
+                 patch.object(review, "capture_docker", side_effect=[
+                     (json.dumps(malformed).encode(), b"", None), (json.dumps(valid).encode(), b"", None)
+                 ]):
+                status = review.main(["--student", "Broken", "broken@example.com", "https://github.com/broken/course/pulls",
+                                      "--student", "Ada", "ada@example.com", "https://github.com/ada/course/pulls",
+                                      "--assignment", "1", "--output-dir", tmp])
+            reports = sorted(Path(tmp).glob("assignment-1-review-*-student-*.md"))
+            self.assertEqual(status, 0)
+            self.assertEqual(len(reports), 2)
+            self.assertIn("invalid result shape", reports[0].read_text(encoding="utf-8"))
+            self.assertIn("completed", reports[1].read_text(encoding="utf-8"))
+
     def test_invalid_cli_student_does_not_block_later_student(self):
         students, _, _ = review.parse_input(["--student", "Broken", "", "https://github.com/broken/course/pulls",
                                              "--student", "Ada", "ada@example.com", "https://github.com/ada/course/pulls",

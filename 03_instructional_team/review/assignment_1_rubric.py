@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-
 ASSIGNED_SOURCES = ("managing_oneself", "Managing Oneself", "ai_report_2025", "GenAI Divide", "What is Noise", "newyorker.com")
 FIELDS = ("Author", "Title", "Relevance", "Summary", "Tone", "InputTokens", "OutputTokens")
 
@@ -102,7 +101,7 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
     cells = notebook.get("cells", [])
     code = [(i + 1, "".join(cell.get("source", []))) for i, cell in enumerate(cells) if cell.get("cell_type") == "code"]
     enhancement_start = next((i for i, cell in enumerate(cells, 1)
-                              if cell.get("cell_type") == "markdown" and re.search(r"^#+\s*Enhancement\b", "".join(cell.get("source", [])), re.I | re.M)),
+                              if cell.get("cell_type") == "markdown" and re.search(r"^#+\s*Enhancement\b", "".join(cell.get("source", [])), re.IGNORECASE | re.MULTILINE)),
                              len(cells) + 1)
     enhancement_code = [(i, source) for i, source in code if i > enhancement_start]
     original_markdown = baseline_markdown()
@@ -124,13 +123,14 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
             for item in cell.get("outputs", []):
                 if item.get("output_type") == "error":
                     continue
-                raw = item.get("text") or (item.get("data") or {}).get("text/plain") or item.get("evalue") or ""
+                data = item.get("data") or {}
+                raw = item.get("text") or data.get("text/markdown") or data.get("text/plain") or item.get("evalue") or ""
                 outputs.append((i, "".join(raw) if isinstance(raw, list) else str(raw)))
     def field_value(text: str, name: str) -> str | None:
-        quoted = re.search(rf"\b{re.escape(name)}\s*[:=]\s*(['\"])(.*?)\1", text, re.I | re.S)
+        quoted = re.search(rf"\b{re.escape(name)}\s*[:=]\s*(['\"])(.*?)\1", text, re.IGNORECASE | re.DOTALL)
         if quoted:
             return quoted.group(2)
-        line = re.search(rf"(?:^|\n)\s*['\"]?{re.escape(name)}['\"]?\s*[:=]\s*([^\n,}}]+)", text, re.I)
+        line = re.search(rf"(?:^|\n)\s*(?:\*\*)?['\"]?{re.escape(name)}['\"]?(?:\*\*)?\s*[:=]\s*([^\n,}}]+)", text, re.IGNORECASE)
         return line.group(1).strip() if line else None
 
     generated = next(((i, value) for i, value in outputs
@@ -171,21 +171,63 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
     def reflection(pattern: str) -> str | None:
         for i, source in enhancement_code:
             for line in source.splitlines():
-                if line.lstrip().startswith("#") and re.search(pattern, line, re.I):
+                if line.lstrip().startswith("#") and re.search(pattern, line, re.IGNORECASE):
                     return f"Code cell {i} comment: {line.strip()[:100]}"
         for i, source in added_markdown:
             if i <= enhancement_start:
                 continue
-            found = re.search(pattern, source, re.I)
+            found = re.search(pattern, source, re.IGNORECASE)
             if found:
                 return f"Markdown cell {i}: {source.strip()[:100]}"
         return None
 
     def enhancement_match(pattern: str) -> str | None:
         for i, source in enhancement_code:
-            found = re.search(pattern, source, re.I)
+            found = re.search(pattern, source, re.IGNORECASE)
             if found:
                 return f"Code cell {i}: {source.splitlines()[source[:found.start()].count(chr(10))].strip()[:100]}"
+        return None
+
+    def observed_enhancement_evaluation() -> str | None:
+        evaluations = []
+        for i, source in enhancement_code:
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                continue
+            calls = [node.func for node in ast.walk(tree) if isinstance(node, ast.Call)]
+            metrics = {call.value.id for call in calls if isinstance(call, ast.Attribute)
+                       and call.attr == "measure" and isinstance(call.value, ast.Name)}
+            direct_evaluate = any((isinstance(call, ast.Name) and call.id == "evaluate")
+                                  or (isinstance(call, ast.Attribute) and call.attr == "evaluate") for call in calls)
+            if metrics or direct_evaluate:
+                evaluations.append((i, metrics))
+        code_by_cell = dict(enhancement_code)
+        output_by_cell = {}
+        for i, value in outputs:
+            output_by_cell.setdefault(i, []).append(value)
+        for output_cell, values in output_by_cell.items():
+            evaluation = next(((i, metrics) for i, metrics in reversed(evaluations) if i <= output_cell), None)
+            if not evaluation or not executed:
+                continue
+            evaluation_cell, metrics = evaluation
+            if any(item.get("output_type") == "error"
+                   for cell in executed["cells"][evaluation_cell - 1:output_cell]
+                   for item in cell.get("outputs", [])):
+                continue
+            value = "\n".join(values)
+            if not field_value(value, "Score") or not field_value(value, "Reason"):
+                continue
+            source = code_by_cell.get(output_cell, "")
+            if metrics and not any(
+                re.search(rf"\b{re.escape(metric)}\s*\.\s*score\b", source)
+                and re.search(rf"\b{re.escape(metric)}\s*\.\s*reason\b", source)
+                for metric in metrics
+            ):
+                continue
+            if output_cell != evaluation_cell and not metrics:
+                continue
+            return f"Output cell {output_cell}: revised summary Score and Reason; Code cell {evaluation_cell} evaluation"
         return None
 
     def applied_metric(name: str) -> str | None:
@@ -217,7 +259,7 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
                                 applied.update({item.id: i for item in keyword.value.elts if isinstance(item, ast.Name)})
         used = metrics & applied.keys()
         if used:
-            metric = sorted(used)[0]
+            metric = min(used)
             return f"Code cell {applied[metric]}: {metric} metric is applied"
         return None
 
@@ -232,7 +274,7 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
     def question_score(name: str, maximum: float) -> tuple[float, str]:
         cell, questions = metric_steps.get(name, (0, []))
         bespoke = list(dict.fromkeys(question.strip() for question in questions
-                                    if len(question.strip()) >= 12 and not re.search(r"what is (the )?(summary|text)|is this a good summary", question, re.I)))
+                                    if len(question.strip()) >= 12 and not re.search(r"what is (the )?(summary|text)|is this a good summary", question, re.IGNORECASE)))
         count = min(len(bespoke), 5)
         evidence = f"Code cell {cell}: {count} candidate questions/steps; facilitator checks relevance: " + "; ".join(bespoke[:5]) if count else "No bespoke metric questions/steps found"
         return count * maximum / 5, evidence
@@ -257,7 +299,7 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
             part("Input and output usage", 5, match(r"\.usage\b") if match(r"InputTokens") and match(r"OutputTokens") else None),
         )),
         Criterion("Generated content", (
-            part("Professional relevance", 2, relevance[0] if relevance and re.search(r"professional|career|practitioner", relevance[1], re.I) else None, runtime=True),
+            part("Professional relevance", 2, relevance[0] if relevance and re.search(r"professional|career|practitioner", relevance[1], re.IGNORECASE) else None, runtime=True),
             part("Relevance one paragraph", 2, relevance[0] if relevance and "\n\n" not in relevance[1] else None, runtime=True),
             part("Source-faithful summary", 2, summary[0] + " (facilitator verifies accuracy)" if summary else None, runtime=True),
             summary_length(),
@@ -288,7 +330,7 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
         Criterion("Enhancement and reflection", (
             part("Context, summary, and evaluation in revision prompt", 3, enhancement_match(r"context") if enhancement_match(r"summary") and enhancement_match(r"evaluat") else None),
             part("Revised summary generated", 3, enhancement_match(r"revis|enhanc|improv") if output(r".{30,}", enhancement_start) else None, runtime=True),
-            part("Revised summary evaluated", 3, enhancement_match(r"revis|enhanc|improv") if enhancement_match(r"\.measure\(|evaluate\(") else None, runtime=True),
+            part("Revised summary evaluated", 3, observed_enhancement_evaluation(), runtime=True),
             part("Results compared", 3, reflection(r"compar|before|after|initial") if output(r".{10,}", enhancement_start) else None, runtime=True),
             part("Reflection on improvement and controls", 3, reflection(r"controls|adequate|limitations|improv")),
         )),

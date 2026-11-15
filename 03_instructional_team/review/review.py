@@ -23,9 +23,8 @@ from typing import NamedTuple
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from assignment_1_rubric import assess, grade_label
 from api_gateway import notebook_gateway
-
+from assignment_1_rubric import assess, grade_label
 
 DEFAULT_REPORTS = Path("03_instructional_team/review/reports")
 COURSE_ROOT = Path(__file__).resolve().parents[2]
@@ -124,7 +123,7 @@ def fetch_assignment_snapshot(repo: str, pr: dict) -> AssignmentSnapshot:
             raise ValueError("unexpected content encoding")
         content = payload["content"]
         if not isinstance(content, str):
-            raise ValueError("invalid content data")
+            raise TypeError("invalid content data")
         notebook = json.loads(base64.b64decode(re.sub(r"[\t\n\r\f ]", "", content), validate=True))
         if (not isinstance(notebook, dict) or not isinstance(notebook.get("cells"), list)
                 or any(not isinstance(cell, dict) or not isinstance(cell.get("source", ""), (str, list))
@@ -303,8 +302,17 @@ def valid_execution_artifact(value: object) -> bool:
     for cell in value["cells"]:
         if not isinstance(cell, dict) or not isinstance(cell.get("outputs", []), list):
             return False
-        if any(not isinstance(item, dict) for item in cell["outputs"]):
-            return False
+        for item in cell.get("outputs", []):
+            if not isinstance(item, dict):
+                return False
+            data = item.get("data", {})
+            if not isinstance(data, dict):
+                return False
+            for text in (item.get("text", ""), data.get("text/plain", ""), data.get("text/markdown", "")):
+                if not isinstance(text, str) and not (
+                    isinstance(text, list) and all(isinstance(part, str) for part in text)
+                ):
+                    return False
     return True
 
 
@@ -369,13 +377,13 @@ def parse_input(argv: list[str] | None = None) -> tuple[list[Student], tuple[int
                     missing = tuple(key for key, value in (("name", name), ("email", email), ("repo_url", url)) if not value)
                     if missing:
                         issue = f"Missing input: {', '.join(missing)}"
-                        logging.warning("CSV row %s: %s; skipping lookup", row_number, issue)
+                        logging.getLogger(__name__).warning("CSV row %s: %s; skipping lookup", row_number, issue)
                         students.append(Student(name, email, url, "", missing=missing, row_number=row_number, issue=issue))
                         continue
                     try:
                         students.append(make_student(name, email, url)._replace(row_number=row_number))
                     except ValueError as exc:
-                        logging.warning("CSV row %s: %s; skipping lookup", row_number, exc)
+                        logging.getLogger(__name__).warning("CSV row %s: %s; skipping lookup", row_number, exc)
                         students.append(Student(name, email, url, "", row_number=row_number, issue=str(exc)))
         except OSError as exc:
             raise ValueError(f"cannot read CSV: {exc}") from exc
