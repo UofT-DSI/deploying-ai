@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 script = Path(__file__).resolve().parents[1] / "review.py"
@@ -375,6 +376,12 @@ class RubricTests(unittest.TestCase):
 
 
 class CliReportTests(unittest.TestCase):
+    def setUp(self):
+        judge = patch.object(review, "judge_review", return_value=SimpleNamespace(
+            issue="Judge unavailable in test", judgments=(), model=None))
+        judge.start()
+        self.addCleanup(judge.stop)
+
     def test_substitution_record_does_not_carry_to_next_student(self):
         pr = {"number": 7, "title": "Assignment 1", "head": {"sha": "abc123", "ref": "assignment-1"},
               "state": "open", "html_url": "https://github.com/ada/course/pull/7"}

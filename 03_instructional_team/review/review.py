@@ -24,6 +24,9 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from api_gateway import notebook_gateway
+from assignment_1_evidence import EvidenceLimit, build_evidence
+from assignment_1_judge import judge_review, rubric_specs
+from assignment_1_reconcile import Reconciliation, reconcile
 from assignment_1_rubric import assess, grade_label
 from course_workspace import ASSIGNED_PDFS
 
@@ -481,7 +484,8 @@ def write_report(items: list[tuple[Student, int, Result]], output_dir: Path) -> 
 
 def write_assignment_report(path: Path, student: Student, result: Result,
                             snapshot: AssignmentSnapshot | None, criteria: tuple | None,
-                            execution_note: str | None, substitutions: list[dict] | None = None) -> None:
+                            execution_note: str | None, substitutions: list[dict] | None = None,
+                            second_pass: Reconciliation | None = None) -> None:
     def clean(value: object) -> str:
         return LOCAL_PATH.sub("[local path]", redact(str(value or ""))).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
@@ -506,6 +510,22 @@ def write_assignment_report(path: Path, student: Student, result: Result,
             details = "; ".join(f"{part.label}: {'Pending' if part.pending else f'{part.earned:g}'}/{part.available:g} — {clean(part.evidence)}" for part in item.parts)
             row_score = f"{item.earned:g} / {item.available:g}" + (" assessed; pending parts excluded" if item.pending else "")
             lines.append(f"| {item.name}{' (review)' if item.pending else ''} | {row_score} | {details} |")
+        if second_pass:
+            lines.extend(["", "## Independent AI review", "",
+                          f"- Model: {clean(second_pass.model) or 'Unavailable'}"])
+            if second_pass.issue:
+                lines.append(f"- Judge unavailable: {clean(second_pass.issue)}. Original rubric assessment retained.")
+            else:
+                counts = {status: sum(item.status == status for item in second_pass.decisions)
+                          for status in ("agreed", "applied", "disputed", "unverified", "unavailable")}
+                lines.append("- Subpoints: " + ", ".join(f"{count} {status}" for status, count in counts.items()) + ".")
+                for decision in second_pass.decisions:
+                    if decision.status == "agreed":
+                        lines.append(f"- Agreed: {clean(decision.criterion)} / {clean(decision.label)} ({decision.original:g}/{next(part.available for row in criteria if row.name == decision.criterion for part in row.parts if part.label == decision.label):g}).")
+                        continue
+                    cited = "; ".join(f"{item.kind.title()} cell {item.cell}: {clean(item.excerpt[:100])}" for item in decision.evidence)
+                    note_label = "Validation" if decision.status == "applied" else "Review hold"
+                    lines.append(f"- {decision.status.title()}: {clean(decision.criterion)} / {clean(decision.label)} — original {decision.original:g}, AI {decision.proposed:g}. {clean(decision.reason)} {note_label}: {clean(decision.review_note)}" + (f" Evidence: {cited}." if cited else ""))
         passed = [(item.name, part) for item in criteria for part in item.parts if part.earned > 0]
         missed = [(item.name, part) for item in criteria for part in item.parts if not part.pending and part.earned < part.available]
         lines.extend(["", "## Encouraging observations", ""])
@@ -563,6 +583,7 @@ def main(argv: list[str] | None = None) -> int:
             criteria = None
             execution_note = None
             substitutions = []
+            second_pass = None
             if result.kind == "submitted":
                 try:
                     snapshot = fetch_assignment_snapshot(student.repo, result.primary)
@@ -578,6 +599,14 @@ def main(argv: list[str] | None = None) -> int:
                             executed, execution_note = None, "Evaluator setup failed: " + redact(str(exc))
                     blocked = execution_note if not executed or (execution_note or "").startswith("Environment:") else None
                     criteria = assess(snapshot.notebook, executed, blocked)
+                    try:
+                        bundle = build_evidence(snapshot.notebook, executed, blocked,
+                                                secrets=(os.environ.get("OPENAI_API_KEY", ""),),
+                                                student_name=student.name)
+                        second_pass = reconcile(criteria, judge_review(bundle, rubric_specs(criteria)), bundle)
+                        criteria = second_pass.criteria
+                    except EvidenceLimit as exc:
+                        second_pass = Reconciliation(criteria, (), str(exc))
                     metadata = (executed or {}).get("metadata") or {}
                     details = metadata.get("assignment_review") if isinstance(metadata, dict) else None
                     if isinstance(details, dict) and isinstance(details.get("substitutions"), list):
@@ -587,14 +616,14 @@ def main(argv: list[str] | None = None) -> int:
                 except LookupFailure as exc:
                     result = Result("unverifiable", result.primary, result.state, str(exc))
             updated_items.append((student, assignment, result))
-            assessments.append((student, result, snapshot, criteria, execution_note, substitutions))
+            assessments.append((student, result, snapshot, criteria, execution_note, substitutions, second_pass))
         items = updated_items
     try:
         path = write_report(items, output_dir)
         if assignments == (1,):
-            for index, (student, result, snapshot, criteria, execution_note, substitutions) in enumerate(assessments, 1):
+            for index, (student, result, snapshot, criteria, execution_note, substitutions, second_pass) in enumerate(assessments, 1):
                 write_assignment_report(path.with_name(f"{path.stem}-student-{index}.md"), student, result,
-                                        snapshot, criteria, execution_note, substitutions)
+                                        snapshot, criteria, execution_note, substitutions, second_pass)
     except OSError as exc:
         print(f"Could not write reports: {exc}")
         return 2
