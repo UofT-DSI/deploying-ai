@@ -13,6 +13,35 @@ spec.loader.exec_module(gateway)
 
 
 class GatewayTests(unittest.TestCase):
+    def test_legacy_max_tokens_is_bounded_without_conflicting_parameter(self):
+        seen = []
+
+        class Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def read(self, size):
+                return b'{"choices":[]}'
+
+        def fake_upstream(request, **kwargs):
+            seen.append(json.loads(request.data))
+            return Response()
+
+        with patch.object(gateway.urllib.request, "urlopen", side_effect=fake_upstream), \
+             gateway.notebook_gateway("real-secret") as (port, token):
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+            body = json.dumps({"model": "gpt-4o-mini", "messages": [], "max_tokens": 1000})
+            conn.request("POST", "/v1/chat/completions", body,
+                         {"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+            self.assertEqual(conn.getresponse().status, 200)
+            conn.close()
+        self.assertEqual(seen, [{"model": "gpt-4o-mini", "messages": [], "max_tokens": 512}])
+
     def test_only_bounded_permitted_calls_reach_upstream_with_real_key(self):
         seen = []
 

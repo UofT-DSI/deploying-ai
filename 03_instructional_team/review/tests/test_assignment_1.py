@@ -70,6 +70,25 @@ class SnapshotTests(unittest.TestCase):
 
 
 class RubricTests(unittest.TestCase):
+    def test_pypdf_reader_counts_as_loaded_article(self):
+        notebook = {"cells": [{"cell_type": "code", "source": [
+            "reader = pypdf.PdfReader(file_path)\n",
+            "pages = [page.extract_text() for page in reader.pages]",
+        ]}]}
+        row = next(row for row in review.assess(notebook) if row.name == "Source selection and loading")
+        self.assertEqual(row.parts[1].earned, 4)
+
+    def test_multiline_user_prompt_receives_loaded_document_text(self):
+        notebook = {"cells": [
+            {"cell_type": "code", "source": ["document_text = ''.join(page.page_content for page in docs)"]},
+            {"cell_type": "code", "source": [
+                "client.chat.completions.parse(messages=[{'role': 'user',\n",
+                "'content': f'''Document:\n{document_text}'''}])",
+            ]},
+        ]}
+        row = next(row for row in review.assess(notebook) if row.name == "Generation implementation")
+        self.assertEqual(next(part for part in row.parts if part.label == "Dynamic source context").earned, 5)
+
     def test_system_and_user_messages_satisfy_instruction_prompt_requirement(self):
         notebook = {"cells": [{"cell_type": "code", "source": [
             "client.chat.completions.create(messages=[",
@@ -118,6 +137,27 @@ class RubricTests(unittest.TestCase):
         rows = {row.name: row for row in review.assess(notebook)}
         self.assertEqual(rows["Structured evaluation result"].parts[0].earned, 0)
 
+    def test_measured_summarization_score_and_reason_in_output(self):
+        notebook = {"cells": [{"cell_type": "code", "source": [
+            "metric = SummarizationMetric(assessment_questions=[])\n",
+            "metric.measure(test_case)\n",
+            "print('Score:', metric.score)\nprint('Reason:', metric.reason)",
+        ]}]}
+        executed = {"cells": [{"outputs": [{"output_type": "stream", "text":
+            "Score: 0.67\nReason: The summary omits one section."}]}]}
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Structured evaluation result")
+        self.assertEqual(row.parts[0].earned, 2.5)
+
+    def test_printed_g_eval_result_dictionaries_count_score_and_reason(self):
+        notebook = {"cells": [{"cell_type": "code", "source": ["print(evaluation_result)"]}]}
+        executed = {"cells": [{"outputs": [{"output_type": "stream", "text": (
+            "{'CoherenceScore': 0.87, 'CoherenceReason': 'Clear overall'}\n"
+            "{'TonalityScore': 0.86, 'Tonality': 'Consistent voice'}\n"
+            "{'SafetyScore': 0.85, 'Safety': 'No harmful content'}"
+        )}]}]}
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Structured evaluation result")
+        self.assertEqual([part.earned for part in row.parts[1:]], [2.5, 2.5, 2.5])
+
     def test_revised_summary_evaluation_requires_observed_result(self):
         notebook = {"cells": [
             {"cell_type": "markdown", "source": ["# Enhancement"]},
@@ -157,6 +197,33 @@ class RubricTests(unittest.TestCase):
         self.assertEqual(row.parts[2].earned, 3)
         self.assertIn("Code cell 2", row.parts[2].evidence)
         self.assertIn("Output cell 3", row.parts[2].evidence)
+
+    def test_second_generation_and_first_final_comparison_are_recognized(self):
+        notebook = {"cells": [
+            {"cell_type": "markdown", "source": ["# Enhancement"]},
+            {"cell_type": "code", "source": [
+                "response = client.chat.completions.parse(messages=prompt)\nevent = response.choices[0].message.parsed"
+            ]},
+            {"cell_type": "code", "source": ["print(event.summary)"]},
+            {"cell_type": "code", "source": [
+                "metric.measure(test_case)\nprint('Score:', metric.score)\nprint('Reason:', metric.reason)"
+            ]},
+            {"cell_type": "markdown", "source": [
+                "# RESULTS\nFirst prompt: 0.67\nFinal prompt: 0.75\nThe final summary was more accurate."
+            ]},
+        ]}
+        executed = {"cells": [
+            {"outputs": []},
+            {"outputs": []},
+            {"outputs": [{"output_type": "stream", "text": "A revised summary of the source article and its main points."}]},
+            {"outputs": [{"output_type": "stream", "text": "Score: 0.75\nReason: More accurate."}]},
+            {"outputs": []},
+        ]}
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Enhancement and reflection")
+        self.assertEqual(row.parts[1].earned, 3)
+        self.assertEqual(row.parts[3].earned, 3)
+        self.assertEqual(row.parts[0].earned, 0)
+        self.assertEqual(row.parts[4].earned, 0)
 
     def test_revised_summary_does_not_borrow_another_metric_result(self):
         notebook = {"cells": [

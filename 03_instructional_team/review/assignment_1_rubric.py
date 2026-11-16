@@ -127,10 +127,10 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
                 raw = item.get("text") or data.get("text/markdown") or data.get("text/plain") or item.get("evalue") or ""
                 outputs.append((i, "".join(raw) if isinstance(raw, list) else str(raw)))
     def field_value(text: str, name: str) -> str | None:
-        quoted = re.search(rf"\b{re.escape(name)}\s*[:=]\s*(['\"])(.*?)\1", text, re.IGNORECASE | re.DOTALL)
+        quoted = re.search(rf"\b{re.escape(name)}['\"]?\s*[:=]\s*(['\"])(.*?)\1", text, re.IGNORECASE | re.DOTALL)
         if quoted:
             return quoted.group(2)
-        line = re.search(rf"(?:^|\n)\s*(?:\*\*)?['\"]?{re.escape(name)}['\"]?(?:\*\*)?\s*[:=]\s*([^\n,}}]+)", text, re.IGNORECASE)
+        line = re.search(rf"(?:^|\n|[{{,])\s*(?:\*\*)?['\"]?{re.escape(name)}['\"]?(?:\*\*)?\s*[:=]\s*([^\n,}}]+)", text, re.IGNORECASE)
         return line.group(1).strip() if line else None
 
     generated = next(((i, value) for i, value in outputs
@@ -230,6 +230,23 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
             return f"Output cell {output_cell}: revised summary Score and Reason; Code cell {evaluation_cell} evaluation"
         return None
 
+    def observed_revised_summary() -> str | None:
+        generations = [i for i, source in enhancement_code
+                       if re.search(r"\bclient\.chat\.completions\.(?:parse|create)\s*\(", source)]
+        for generated_cell in generations:
+            for output_cell, value in outputs:
+                if output_cell <= generated_cell or len(value.strip()) < 30:
+                    continue
+                source = dict(enhancement_code).get(output_cell, "")
+                if not re.search(r"(?:print|display)\s*\([^)]*\.summary\b", source):
+                    continue
+                if executed and any(item.get("output_type") == "error"
+                                    for cell in executed["cells"][generated_cell - 1:output_cell]
+                                    for item in cell.get("outputs", [])):
+                    continue
+                return f"Output cell {output_cell}: revised summary after Code cell {generated_cell} generation"
+        return None
+
     def applied_metric(name: str) -> str | None:
         metrics = set()
         applied = {}
@@ -263,6 +280,35 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
             return f"Code cell {applied[metric]}: {metric} metric is applied"
         return None
 
+    def measured_summarization_result() -> str | None:
+        for i, source in code:
+            if i >= enhancement_start or "SummarizationMetric" not in source:
+                continue
+            metric = re.search(r"\b(\w+)\s*=\s*SummarizationMetric\s*\(", source)
+            if not metric:
+                continue
+            name = re.escape(metric.group(1))
+            if not all(re.search(rf"\b{name}\s*\.\s*{attr}\b", source) for attr in ("measure", "score", "reason")):
+                continue
+            if executed and any(item.get("output_type") == "error" for item in executed["cells"][i - 1].get("outputs", [])):
+                continue
+            value = "\n".join(text for cell, text in outputs if cell == i)
+            if field_value(value, "Score") and field_value(value, "Reason"):
+                return f"Output cell {i}: Summarization Score and Reason"
+        return None
+
+    def structured_result(name: str) -> str | None:
+        fields = {
+            "Summarization": (("SummarizationScore", "SummarizationReason"),),
+            "Coherence": (("CoherenceScore", "CoherenceReason"),),
+            "Tone": (("ToneScore", "ToneReason"), ("TonalityScore", "Tonality")),
+            "Safety": (("SafetyScore", "SafetyReason"), ("SafetyScore", "Safety")),
+        }
+        for i, value in outputs:
+            if any(field_value(value, score) and field_value(value, reason) for score, reason in fields[name]):
+                return f"Output cell {i}: {name} Score and Reason"
+        return measured_summarization_result() if name == "Summarization" else None
+
     def part(label: str, points: float, evidence: str | None, runtime: bool = False) -> Part:
         if runtime and blocked and (not evidence or not evidence.startswith("Output cell")):
             return Part(label, points, 0, f"Evaluator blocked: {blocked}", True)
@@ -284,13 +330,13 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
     criteria = [
         Criterion("Source selection and loading", (
             part("Assigned article selected", 2, selected),
-            part("Content loaded", 4, match(r"(PyPDFLoader|WebBaseLoader|open\(|load\(|requests\.get)")),
+            part("Content loaded", 4, match(r"(PyPDFLoader|PdfReader|WebBaseLoader|open\(|load\(|requests\.get)")),
             part("Usable extracted text", 4, output(r".{40,}"), runtime=True),
         )),
         Criterion("Generation implementation", (
             part("OpenAI SDK", 3, match(r"\b(import openai|from openai import|OpenAI\()")),
             part("Non-GPT-5 model", 3, match(r"(model\s*=\s*['\"](?!gpt-5)[^'\"]+|['\"]gpt-4[^'\"]*['\"])")),
-            part("Dynamic source context", 5, match(r"(f['\"].*\{.*(document|context|text)|\.format\(.*(document|context|text)|\bcontext\s*=)")),
+            part("Dynamic source context", 5, match(r"(f['\"].*\{.*(document|context|text)|\.format\(.*(document|context|text)|\bcontext\s*=)", re.IGNORECASE | re.DOTALL)),
             part("Developer and user prompts", 4, match(r"['\"](?:developer|system)['\"]") if match(r"['\"]user['\"]") else None),
         )),
         Criterion("Structured generation", (
@@ -321,17 +367,14 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
             )
         )),
         Criterion("Structured evaluation result", tuple(
-            part(f"{name} Score and Reason", 2.5,
-                 next((f"Output cell {i}: {name} Score and Reason" for i, value in outputs
-                       if field_value(value, f"{name}Score") and field_value(value, f"{name}Reason")), None),
-                 runtime=True)
+            part(f"{name} Score and Reason", 2.5, structured_result(name), runtime=True)
             for name in ("Summarization", "Coherence", "Tone", "Safety")
         )),
         Criterion("Enhancement and reflection", (
             part("Context, summary, and evaluation in revision prompt", 3, enhancement_match(r"context") if enhancement_match(r"summary") and enhancement_match(r"evaluat") else None),
-            part("Revised summary generated", 3, enhancement_match(r"revis|enhanc|improv") if output(r".{30,}", enhancement_start) else None, runtime=True),
+            part("Revised summary generated", 3, observed_revised_summary(), runtime=True),
             part("Revised summary evaluated", 3, observed_enhancement_evaluation(), runtime=True),
-            part("Results compared", 3, reflection(r"compar|before|after|initial") if output(r".{10,}", enhancement_start) else None, runtime=True),
+            part("Results compared", 3, reflection(r"compar|before|after|initial|first\s+prompt|final\s+prompt|higher|lower") if output(r".{10,}", enhancement_start) else None, runtime=True),
             part("Reflection on improvement and controls", 3, reflection(r"controls|adequate|limitations|improv")),
         )),
     ]

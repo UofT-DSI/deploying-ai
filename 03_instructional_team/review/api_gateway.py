@@ -60,7 +60,8 @@ def notebook_gateway(api_key: str | None):
                     self.respond(403, b'{"error":"model not permitted"}')
                     return
                 if self.path == "/v1/chat/completions":
-                    payload["max_completion_tokens"] = min(int(payload.get("max_completion_tokens", 512)), 512)
+                    limit_field = "max_tokens" if "max_tokens" in payload else "max_completion_tokens"
+                    payload[limit_field] = min(int(payload.get(limit_field, 512)), 512)
                 elif self.path == "/v1/responses":
                     payload["max_output_tokens"] = min(int(payload.get("max_output_tokens", 512)), 512)
                 body = json.dumps(payload).encode("utf-8")
