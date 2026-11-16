@@ -70,6 +70,17 @@ class SnapshotTests(unittest.TestCase):
 
 
 class RubricTests(unittest.TestCase):
+    def test_system_and_user_messages_satisfy_instruction_prompt_requirement(self):
+        notebook = {"cells": [{"cell_type": "code", "source": [
+            "client.chat.completions.create(messages=[",
+            "{'role': 'system', 'content': 'Summarize the article'}, ",
+            "{'role': 'user', 'content': article_text}])"
+        ]}]}
+        generation = next(row for row in review.assess(notebook) if row.name == "Generation implementation")
+        prompts = next(part for part in generation.parts if part.label == "Developer and user prompts")
+        self.assertEqual(prompts.earned, 4)
+        self.assertIn("system", prompts.evidence)
+
     def test_course_evaluate_call_counts_as_metric_application(self):
         notebook = {"cells": [{"cell_type": "code", "source": [
             ("from deepeval.metrics import GEval, SummarizationMetric\n"

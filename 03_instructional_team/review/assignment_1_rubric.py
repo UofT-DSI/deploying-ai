@@ -291,7 +291,7 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
             part("OpenAI SDK", 3, match(r"\b(import openai|from openai import|OpenAI\()")),
             part("Non-GPT-5 model", 3, match(r"(model\s*=\s*['\"](?!gpt-5)[^'\"]+|['\"]gpt-4[^'\"]*['\"])")),
             part("Dynamic source context", 5, match(r"(f['\"].*\{.*(document|context|text)|\.format\(.*(document|context|text)|\bcontext\s*=)")),
-            part("Developer and user prompts", 4, match(r"['\"]developer['\"]") if match(r"['\"]user['\"]") else None),
+            part("Developer and user prompts", 4, match(r"['\"](?:developer|system)['\"]") if match(r"['\"]user['\"]") else None),
         )),
         Criterion("Structured generation", (
             part("Pydantic BaseModel", 3, match(r"\bBaseModel\b")),
