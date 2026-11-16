@@ -148,7 +148,9 @@ def _reconcile_composite(criteria: tuple[Criterion, ...], review: JudgeReview,
                 status = "unavailable"
                 resolved = part
                 selected = None
-                reason = "Trusted evidence for this rubric part is unavailable."
+                reason = ("The first-pass evidence is inconclusive; facilitator review is needed."
+                          if part.pending_reason == "inconclusive"
+                          else "Required execution evidence is unavailable.")
             elif choice and choice.status == "scored" and choice_valid and (
                     choice.evidence or choice.points == part.earned == 0):
                 status = "agreed" if ai and ai.points == part.earned == choice.points else "proposed"

@@ -354,7 +354,44 @@ class ReconciliationTests(unittest.TestCase):
                                                   "No Score and Reason seen."),)), bundle)
         self.assertEqual(result.decisions[0].status, "unavailable")
         self.assertTrue(result.criteria[6].parts[0].pending)
+        self.assertEqual(result.criteria[6].parts[0].pending_reason, "blocked")
         self.assertEqual(result.criteria[6].parts[0].earned, 0)
+
+    def test_printed_usage_updates_proposed_total_and_appendix(self):
+        notebook = {"cells": [
+            {"cell_type": "code", "source": [
+                ("response = client.chat.completions.parse(model='gpt-4o-mini', messages=[])\n"
+                 "event = response.choices[0].message.parsed")]},
+            {"cell_type": "code", "source": [
+                "print(f'Relevance: {event.relevance}')\nprint(f'Summary: {event.summary}')"]},
+            {"cell_type": "code", "source": [
+                "output_tokens = response.usage.completion_tokens\nprint(f'Output: {output_tokens}')"]},
+        ]}
+        executed = {"cells": [
+            {"outputs": []},
+            {"outputs": [{"output_type": "stream", "text": "Relevance: work\nSummary: Short summary."}]},
+            {"outputs": [{"output_type": "stream", "text": "Output: 253"}]},
+        ]}
+        criteria = assess(notebook, executed)
+        bundle = build_evidence(notebook, executed, None)
+        second = reconcile(criteria, JudgeReview((), issue="AI review unavailable"), bundle,
+                           CompositeReview((), issue="Composite review unavailable"))
+        student = review.make_student("Ada", "ada@example.com", "https://github.com/ada/course/pulls")
+        snapshot = review.AssignmentSnapshot("abc123", notebook, ("02_activities/assignment_1.ipynb",), "assignment-1")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "draft.md"
+            review.write_assignment_report(path, student, review.Result("submitted", {"html_url":
+                                           "https://github.com/ada/course/pull/7"}, "open"),
+                                           snapshot, second.criteria, None, second_pass=second)
+            report = path.read_text(encoding="utf-8")
+        score = sum(row.earned for row in second.criteria)
+        self.assertIn(f"Proposed score: {score:g} / 100.", report)
+        self.assertIn(f"Proposed classification: {review.grade_label(score, False)}", report)
+        appendix = next(line for line in report.splitlines()
+                        if line.startswith("| Generated content / Summary at most 1,000 tokens |"))
+        self.assertIn("| 2/2:", appendix)
+        self.assertIn("| 2/2: Composite review unavailable", appendix)
+        self.assertNotIn("Pending/2", appendix)
 
     def test_report_shows_original_revision_and_dispute(self):
         notebook = {"cells": [{"cell_type": "code", "source": [
