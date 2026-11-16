@@ -8,7 +8,6 @@ import urllib.request
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-
 MAX_REQUEST_BYTES = 256 * 1024
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_REQUESTS = 20
