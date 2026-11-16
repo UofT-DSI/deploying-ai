@@ -94,6 +94,16 @@ class ExecutionTests(unittest.TestCase):
             self.assertIsNone(executed)
             self.assertIn("unavailable", issue.lower())
 
+    def test_failed_runner_reports_exception_instead_of_cell_source_tail(self):
+        stderr = (b"Traceback (most recent call last):\n"
+                  b"openai.RateLimitError: request limit reached\n"
+                  b"Cell source:\nprint('long notebook source')\n-------------------\n")
+        with patch.object(review, "capture_docker", return_value=(b"", stderr, None)):
+            executed, issue = review.run_notebook({"cells": []})
+        self.assertIsNone(executed)
+        self.assertIn("RateLimitError: request limit reached", issue)
+        self.assertNotIn("long notebook source", issue)
+
     def test_executed_markdown_cell_needs_no_outputs_field(self):
         artifact = {"cells": [{"cell_type": "markdown", "source": "instructions"},
                               {"cell_type": "code", "outputs": []}]}

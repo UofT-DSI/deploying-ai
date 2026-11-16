@@ -24,7 +24,8 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from api_gateway import notebook_gateway
-from assignment_1_evidence import EvidenceLimit, build_evidence
+from assignment_1_composite import composite_review
+from assignment_1_evidence import EvidenceLimit, _redact, build_evidence
 from assignment_1_judge import judge_review, rubric_specs
 from assignment_1_reconcile import Reconciliation, reconcile
 from assignment_1_rubric import assess, grade_label
@@ -286,7 +287,11 @@ def run_notebook(notebook: dict) -> tuple[dict | None, str | None]:
         try:
             executed = json.loads(raw)
         except (ValueError, TypeError, UnicodeError):
-            return None, "Notebook execution unavailable: " + redact(stderr.decode("utf-8", "replace")[-400:])
+            error_text = stderr.decode("utf-8", "replace").split("Cell source:", 1)[0]
+            exceptions = re.findall(r"(?m)^[\w.]*?(?:Error|Exception):[^\r\n]*", error_text)
+            detail = next((line for line in reversed(exceptions) if not line.startswith("CellExecutionError:")),
+                          exceptions[-1] if exceptions else error_text.strip().splitlines()[-1] if error_text.strip() else "runner returned no result")
+            return None, "Notebook execution unavailable: " + redact(detail[:300])
         if not valid_execution_artifact(executed):
             return None, "Notebook execution unavailable: invalid result shape"
         errors = [(i, item) for i, cell in enumerate(executed["cells"], 1)
@@ -489,6 +494,9 @@ def write_assignment_report(path: Path, student: Student, result: Result,
     def clean(value: object) -> str:
         return LOCAL_PATH.sub("[local path]", redact(str(value or ""))).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
+    def clean_evidence(value: object) -> str:
+        return clean(_redact(str(value or ""), (os.environ.get("OPENAI_API_KEY", ""),), student.name))
+
     lines = ["# Assignment 1 — Draft assessment", "", f"- Student: {clean(student.name) or 'Unknown'}",
              f"- Email: {clean(student.email) or 'Missing'}",
              f"- Repository: https://github.com/{clean(student.repo)}" if student.repo else "- Repository: Unavailable",
@@ -503,39 +511,57 @@ def write_assignment_report(path: Path, student: Student, result: Result,
         pending = any(item.pending for item in criteria)
         label = grade_label(points, pending)
         percentage = "Percentage: pending until all rubric parts are assessed." if pending else f"Draft percentage: {points:g}%."
-        lines.extend([f"## Overall: {label} (draft)", "", f"Assessed points: {points:g} / 100.", percentage,
+        lines.extend([f"## Overall: {label} (draft)", "", f"Proposed score: {points:g} / 100.",
+                      f"Proposed classification: {grade_label(points, False)} (draft; based on assessed points).",
+                      percentage,
+                      "The proposed score sums the rubric points supported by the available notebook evidence.",
                       "Facilitator confirmation is required before this is a final grade.", "",
                       "## Rubric", "", "| Criterion | Earned / available | Evidence and feedback |", "| --- | ---: | --- |"])
         for item in criteria:
-            details = "; ".join(f"{part.label}: {'Pending' if part.pending else f'{part.earned:g}'}/{part.available:g} — {clean(part.evidence)}" for part in item.parts)
+            details = "; ".join(f"{part.label}: {'Pending' if part.pending else f'{part.earned:g}'}/{part.available:g} — {clean_evidence(part.evidence)}" for part in item.parts)
             row_score = f"{item.earned:g} / {item.available:g}" + (" assessed; pending parts excluded" if item.pending else "")
             lines.append(f"| {item.name}{' (review)' if item.pending else ''} | {row_score} | {details} |")
-        if second_pass:
-            lines.extend(["", "## Independent AI review", "",
-                          f"- Model: {clean(second_pass.model) or 'Unavailable'}"])
-            if second_pass.issue:
-                lines.append(f"- Judge unavailable: {clean(second_pass.issue)}. Original rubric assessment retained.")
-            else:
-                counts = {status: sum(item.status == status for item in second_pass.decisions)
-                          for status in ("agreed", "applied", "disputed", "unverified", "unavailable")}
-                lines.append("- Subpoints: " + ", ".join(f"{count} {status}" for status, count in counts.items()) + ".")
-                for decision in second_pass.decisions:
-                    if decision.status == "agreed":
-                        lines.append(f"- Agreed: {clean(decision.criterion)} / {clean(decision.label)} ({decision.original:g}/{next(part.available for row in criteria if row.name == decision.criterion for part in row.parts if part.label == decision.label):g}).")
-                        continue
-                    cited = "; ".join(f"{item.kind.title()} cell {item.cell}: {clean(item.excerpt[:100])}" for item in decision.evidence)
-                    note_label = "Validation" if decision.status == "applied" else "Review hold"
-                    lines.append(f"- {decision.status.title()}: {clean(decision.criterion)} / {clean(decision.label)} — original {decision.original:g}, AI {decision.proposed:g}. {clean(decision.reason)} {note_label}: {clean(decision.review_note)}" + (f" Evidence: {cited}." if cited else ""))
-        passed = [(item.name, part) for item in criteria for part in item.parts if part.earned > 0]
-        missed = [(item.name, part) for item in criteria for part in item.parts if not part.pending and part.earned < part.available]
-        lines.extend(["", "## Encouraging observations", ""])
-        lines.extend(f"- {name}: {part.label} ({clean(part.evidence)})." for name, part in passed[:5])
-        if not passed:
-            lines.append("- No supported rubric work was detected; review the notebook before confirming this draft.")
-        lines.extend(["", "## Specific improvements", ""])
-        lines.extend(f"- {name}: demonstrate {part.label.lower()} and show the result in the notebook." for name, part in missed)
-        if not missed:
-            lines.append("- No scored gaps were identified; confirm the provisional judgments against the source article.")
+        decisions = {item.part_id: item for item in second_pass.decisions} if second_pass else {}
+        indexed = [(f"c{row_index:02}p{part_index:02}", row.name, part)
+                   for row_index, row in enumerate(criteria, 1)
+                   for part_index, part in enumerate(row.parts, 1)]
+        by_part = {part_id: (name, part) for part_id, name, part in indexed}
+        contexts = {
+            "Source selection and loading": ("This gives your summary a traceable source.", "Load the assigned article and show which text you used."),
+            "Generation implementation": ("This makes your model request easier to reproduce.", "Show the prompt, source text, and model call used to generate the summary."),
+            "Structured generation": ("This makes your result easier to inspect and reuse.", "Define and populate the required response fields."),
+            "Generated content": ("This lets a reader judge your summary against the article.", "Show the generated summary and check it against the source article."),
+            "Summarization evaluation": ("This gives evidence about your summary's coverage and accuracy.", "Run the summarization metric with questions tied to the article and show the result."),
+            "G-Eval quality checks": ("This checks qualities beyond basic coverage.", "Apply the requested quality checks and display their results."),
+            "Structured evaluation result": ("This makes each evaluation result inspectable.", "Display each score with its reason."),
+            "Enhancement and reflection": ("This shows how you tested an improvement to your summary.", "Use the prior feedback in your revision, evaluate the new summary, and explain what changed."),
+        }
+        lines.extend(["", "## Encouraging observations", "",
+                      "These are parts of your Assignment 1 work that you did well and are worth highlighting."])
+        notes = [note for note in second_pass.encouragements if note.part_id in by_part
+                 and by_part[note.part_id][1].earned > 0] if second_pass else []
+        if notes:
+            lines.extend(f"- {clean_evidence(note.text)}" for note in notes[:6])
+        else:
+            passed = [(name, part) for _, name, part in indexed if part.earned > 0 and not part.pending]
+            lines.extend(f"- You met the {clean(part.label.lower())} part of {clean(name)}. "
+                         f"{clean_evidence(part.evidence)}. {contexts[name][0]}" for name, part in passed[:6])
+            if not passed:
+                lines.append("- Your notebook needs a closer look before I can highlight a supported strength.")
+        lines.extend(["", "## Specific improvements", "",
+                      "Some Assignment 1 requirements were not fully met. These observations explain what to improve and why."])
+        notes = [note for note in second_pass.improvements if note.part_id in by_part
+                 and not by_part[note.part_id][1].pending
+                 and by_part[note.part_id][1].earned < by_part[note.part_id][1].available] if second_pass else []
+        if notes:
+            lines.extend(f"- {clean_evidence(note.text)}" for note in notes)
+        else:
+            missed = [(name, part) for _, name, part in indexed
+                      if not part.pending and part.earned < part.available]
+            lines.extend(f"- The {clean(part.label.lower())} part of {clean(name)} could be stronger. "
+                         f"{clean_evidence(part.evidence)}. {contexts[name][1]}" for name, part in missed)
+            if not missed:
+                lines.append("- No scored requirement gaps were identified. Check the provisional judgments against the source article.")
         if substitutions:
             lines.extend(["", "## Assigned PDF substitutions", ""])
             for record in substitutions:
@@ -543,11 +569,36 @@ def write_assignment_report(path: Path, student: Student, result: Result,
                         and record["cell"] > 0 and record.get("article") in ASSIGNED_PDFS):
                     lines.append(f"- Code cell {record['cell']}: {record['article']} (course copy).")
         if execution_note:
-            lines.extend(["", "## Execution note", "", clean(execution_note)])
+            lines.extend(["", "## Execution note", "", clean_evidence(execution_note)])
         lines.extend(["", "## Submission format (outside points)", "",
                       f"- Branch: {clean(snapshot.branch) if snapshot else 'Unavailable'}" + (" (expected assignment-1)" if snapshot and snapshot.branch != "assignment-1" else ""),
                       "- Changes only assigned notebook: " + ("Yes" if snapshot and snapshot.changed_paths == ("02_activities/assignment_1.ipynb",) else "No"),
                       "- Changed files: " + (", ".join(clean(path) for path in snapshot.changed_paths) if snapshot else "Unavailable"), ""])
+        lines.extend(["", "## Appendix: rubric review by subpoint", "",
+                      "| Rubric element | Non-AI Review | AI Review | Composite Review |",
+                      "| --- | --- | --- | --- |"])
+        for part_id, name, part in indexed:
+            decision = decisions.get(part_id)
+            original = (f"{'Pending' if part.pending else f'{decision.original:g}'}/{part.available:g}: {clean_evidence(decision.original_evidence)}"
+                        if decision else f"{'Pending' if part.pending else f'{part.earned:g}'}/{part.available:g}: {clean_evidence(part.evidence)}")
+            if decision and decision.ai_status == "scored":
+                cited = "; ".join(f"{item.kind} cell {item.cell}: {clean_evidence(item.excerpt[:80])}"
+                                  for item in decision.evidence)
+                ai = f"{decision.proposed:g}/{part.available:g}: {clean_evidence(decision.reason)}" + (f" [{cited}]" if cited else "")
+            else:
+                reason = decision.reason if decision else second_pass.issue if second_pass else "AI review was not run"
+                ai = f"Unavailable: {clean_evidence(reason)}"
+            if decision and decision.composite_score is not None:
+                cited = "; ".join(f"{item.kind} cell {item.cell}: {clean_evidence(item.excerpt[:80])}"
+                                  for item in decision.composite_evidence)
+                composite_cell = (f"{decision.composite_score:g}/{part.available:g}: {clean_evidence(decision.composite_reason)}"
+                                  + (f" [{cited}]" if cited else "")
+                                  + (" Facilitator review needed." if decision.review_needed else ""))
+            else:
+                composite_cell = ("Unassessed" if part.pending else f"{part.earned:g}/{part.available:g} provisional")
+                if second_pass and second_pass.issue:
+                    composite_cell += f": {clean(second_pass.issue)}"
+            lines.append(f"| {clean(name)} / {clean(part.label)} | {original} | {ai} | {composite_cell} |")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -603,7 +654,11 @@ def main(argv: list[str] | None = None) -> int:
                         bundle = build_evidence(snapshot.notebook, executed, blocked,
                                                 secrets=(os.environ.get("OPENAI_API_KEY", ""),),
                                                 student_name=student.name)
-                        second_pass = reconcile(criteria, judge_review(bundle, rubric_specs(criteria)), bundle)
+                        independent = judge_review(bundle, rubric_specs(criteria))
+                        composite = composite_review(criteria, independent, bundle,
+                                                     secrets=(os.environ.get("OPENAI_API_KEY", ""),),
+                                                     student_name=student.name)
+                        second_pass = reconcile(criteria, independent, bundle, composite)
                         criteria = second_pass.criteria
                     except EvidenceLimit as exc:
                         second_pass = Reconciliation(criteria, (), str(exc))

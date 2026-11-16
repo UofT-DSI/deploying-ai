@@ -90,7 +90,7 @@ class Criterion:
 def grade_label(points: float, pending: bool = False) -> str:
     if pending:
         return "Pending"
-    if points >= 65:
+    if points >= 60:
         return "Complete"
     if points >= 25:
         return "Incomplete"

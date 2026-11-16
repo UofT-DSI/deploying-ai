@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -8,8 +9,15 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import review
+from assignment_1_composite import CompositeJudgment, CompositeReview, composite_review
 from assignment_1_evidence import build_evidence
-from assignment_1_judge import JudgeReview, Judgment, judge_review, rubric_specs
+from assignment_1_judge import (
+    Citation,
+    JudgeReview,
+    Judgment,
+    judge_review,
+    rubric_specs,
+)
 from assignment_1_reconcile import reconcile
 from assignment_1_rubric import assess
 
@@ -94,7 +102,138 @@ class JudgeTests(unittest.TestCase):
         self.assertIn("lacks evidence", judge_review(bundle, specs, client=client).issue.lower())
 
 
+class CompositeTests(unittest.TestCase):
+    def test_composite_receives_both_scores_after_independent_review(self):
+        notebook = {"cells": [{"cell_type": "code", "source": ["messages=[{'role': 'system'}, {'role': 'user'}]"]}]}
+        criteria = assess(notebook)
+        bundle = build_evidence(notebook, None, None)
+        specs = rubric_specs(criteria)
+        independent = JudgeReview(tuple(Judgment(spec.part_id, 0, "scored", (), "No evidence.") for spec in specs))
+        payload = {"judgments": [{"part_id": spec.part_id, "points": 0, "status": "scored",
+                                  "evidence": [], "reason": "No award.", "review_needed": False} for spec in specs],
+                   "encouragements": [], "improvements": []}
+        target = next(item for item in payload["judgments"] if item["part_id"] == "c02p04")
+        target.update(points=4, evidence=[{"kind": "code", "cell": 1, "excerpt": "'role': 'system'"}],
+                      reason="System and user roles are present.", review_needed=True)
+        client = Mock()
+        client.responses.create.return_value = Mock(status="completed", output=[], output_text=json.dumps(payload))
+        result = composite_review(criteria, independent, bundle, client=client)
+        self.assertIsNone(result.issue)
+        self.assertEqual(result.judgments[6].points, 4)
+        self.assertTrue(result.judgments[6].review_needed)
+        request = client.responses.create.call_args.kwargs
+        self.assertFalse(request["store"])
+        sent = json.loads(request["input"])
+        self.assertIn("non_ai", sent)
+        self.assertIn("ai", sent)
+        self.assertEqual(len(sent["evidence"]), len(bundle.entries))
+
+    def test_composite_rejects_invalid_citation(self):
+        criteria = assess({"cells": []})
+        bundle = build_evidence({"cells": []}, None, None)
+        specs = rubric_specs(criteria)
+        independent = JudgeReview(tuple(Judgment(spec.part_id, 0, "scored", (), "No evidence.") for spec in specs))
+        payload = {"judgments": [{"part_id": spec.part_id, "points": 0, "status": "scored",
+                                  "evidence": [], "reason": "No award.", "review_needed": False} for spec in specs],
+                   "encouragements": [], "improvements": []}
+        payload["judgments"][0].update(points=1, evidence=[{"kind": "code", "cell": 99, "excerpt": "missing"}])
+        client = Mock()
+        client.responses.create.return_value = Mock(status="completed", output=[], output_text=json.dumps(payload))
+        result = composite_review(criteria, independent, bundle, client=client)
+        self.assertIsNone(result.issue)
+        self.assertEqual(result.judgments[0].status, "unavailable")
+        self.assertIn("citation", result.judgments[0].reason.lower())
+        self.assertTrue(all(item.status == "scored" for item in result.judgments[1:]))
+
+    def test_non_ai_evidence_is_redacted_before_composite_request(self):
+        criteria = assess({"cells": []})
+        first = criteria[0]
+        parts = list(first.parts)
+        parts[0] = replace(parts[0], evidence="ada@example.com used sk-test-secret")
+        criteria = (replace(first, parts=tuple(parts)),) + criteria[1:]
+        bundle = build_evidence({"cells": []}, None, None)
+        independent = JudgeReview(tuple(Judgment(spec.part_id, 0, "scored", (), "No evidence.")
+                                        for spec in rubric_specs(criteria)))
+        client = Mock()
+        client.responses.create.return_value = Mock(status="incomplete", output=[])
+        composite_review(criteria, independent, bundle, client=client, secrets=("sk-test-secret",))
+        payload = client.responses.create.call_args.kwargs["input"]
+        self.assertNotIn("ada@example.com", payload)
+        self.assertNotIn("sk-test-secret", payload)
+
+
 class ReconciliationTests(unittest.TestCase):
+    def test_semantic_disagreement_keeps_a_proposed_number(self):
+        notebook = {"cells": [{"cell_type": "markdown", "source": ["The summary explains the article's claim."]}]}
+        criteria = assess(notebook)
+        bundle = build_evidence(notebook, None, None)
+        independent = JudgeReview((Judgment("c04p03", 2, "scored",
+                                              (("markdown", 1, "The summary explains"),), "Faithful summary."),))
+        composite = CompositeReview((CompositeJudgment("c04p03", 1, "scored",
+                                                       (Citation("markdown", 1, "The summary explains"),),
+                                                       "The claim is present, but accuracy needs review.", True),))
+        result = reconcile(criteria, independent, bundle, composite)
+        self.assertEqual(result.criteria[3].parts[2].earned, 1)
+        self.assertFalse(result.criteria[3].parts[2].pending)
+        decision = next(item for item in result.decisions if item.part_id == "c04p03")
+        self.assertEqual((decision.original, decision.proposed, decision.composite_score),
+                         (criteria[3].parts[2].earned, 2, 1))
+        self.assertTrue(decision.review_needed)
+
+    def test_invalid_composite_citation_keeps_non_ai_points(self):
+        notebook = {"cells": [{"cell_type": "code", "source": ["print('hello')"]}]}
+        criteria = assess(notebook)
+        first = criteria[0]
+        parts = list(first.parts)
+        parts[0] = replace(parts[0], earned=2, evidence="Code cell 1: print('hello')")
+        criteria = (replace(first, parts=tuple(parts)),) + criteria[1:]
+        bundle = build_evidence(notebook, None, None)
+        independent = JudgeReview((Judgment("c01p01", 2, "scored",
+                                              (("code", 1, "print('hello')"),), "Observed."),))
+        composite = CompositeReview((CompositeJudgment("c01p01", 0, "unavailable", (),
+                                                       "Composite citation did not match the available evidence.", True),))
+        result = reconcile(criteria, independent, bundle, composite)
+        self.assertEqual(result.criteria[0].parts[0].earned, 2)
+        self.assertEqual(result.decisions[0].composite_score, 2)
+        self.assertEqual(result.decisions[0].status, "fallback")
+
+    def test_unavailable_ai_part_is_named_in_appendix(self):
+        notebook = {"cells": [{"cell_type": "code", "source": ["print('hello')"]}]}
+        criteria = assess(notebook)
+        bundle = build_evidence(notebook, None, None)
+        independent = JudgeReview((Judgment("c01p01", 0, "unavailable", (), "Could not inspect source."),))
+        second = reconcile(criteria, independent, bundle, CompositeReview(issue="Composite unavailable"))
+        student = review.make_student("Ada", "ada@example.com", "https://github.com/ada/course/pulls")
+        snapshot = review.AssignmentSnapshot("abc123", notebook, ("02_activities/assignment_1.ipynb",), "assignment-1")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "draft.md"
+            review.write_assignment_report(path, student, review.Result("submitted", {"html_url":
+                                           "https://github.com/ada/course/pull/7"}, "open"),
+                                           snapshot, second.criteria, None, second_pass=second)
+            report = path.read_text(encoding="utf-8")
+        row = next(line for line in report.splitlines() if "Source selection and loading /" in line)
+        self.assertIn("Unavailable: Could not inspect source.", row)
+
+    def test_report_redacts_student_controlled_evidence(self):
+        notebook = {"cells": []}
+        criteria = assess(notebook)
+        first = criteria[0]
+        parts = list(first.parts)
+        parts[0] = replace(parts[0], evidence="ada@example.com sk-test-secret | injected")
+        criteria = (replace(first, parts=tuple(parts)),) + criteria[1:]
+        student = review.make_student("Ada", "ada@example.com", "https://github.com/ada/course/pulls")
+        snapshot = review.AssignmentSnapshot("abc123", notebook, ("02_activities/assignment_1.ipynb",), "assignment-1")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "draft.md"
+            review.write_assignment_report(path, student, review.Result("submitted", {"html_url":
+                                           "https://github.com/ada/course/pull/7"}, "open"),
+                                           snapshot, criteria, None)
+            report = path.read_text(encoding="utf-8")
+        rubric = report.split("## Rubric", 1)[1]
+        self.assertNotIn("sk-test-secret", rubric)
+        self.assertNotIn("ada@example.com", rubric)
+        self.assertIn("\\| injected", rubric)
+
     def test_supported_structural_increase_and_decrease(self):
         notebook = {"cells": [{"cell_type": "code", "source": [
             "messages=[{'role': 'system', 'content': 'Summarize'}, {'role': 'user', 'content': 'text'}]\n",
@@ -169,10 +308,17 @@ class ReconciliationTests(unittest.TestCase):
         parts[3] = replace(parts[3], earned=0)
         criteria = criteria[:1] + (replace(row, parts=tuple(parts)),) + criteria[2:]
         bundle = build_evidence(notebook, None, None)
-        second = reconcile(criteria, JudgeReview((
+        independent = JudgeReview((
             Judgment("c02p04", 4, "scored", (("code", 1, bundle.entries[0].text),), "Both roles present."),
             Judgment("c04p03", 2, "scored", (("code", 1, "messages"),), "Source faithful."),
-        ), model="gpt-4.1"), bundle)
+        ), model="gpt-4.1")
+        composite = CompositeReview((
+            CompositeJudgment("c02p04", 4, "scored", (Citation("code", 1, bundle.entries[0].text),),
+                              "Both system and user roles are present.", False),
+            CompositeJudgment("c04p03", 1, "scored", (Citation("code", 1, "messages"),),
+                              "The summary's faithfulness needs checking.", True),
+        ), model="gpt-4.1")
+        second = reconcile(criteria, independent, bundle, composite)
         student = review.make_student("Ada", "ada@example.com", "https://github.com/ada/course/pulls")
         snapshot = review.AssignmentSnapshot("abc123", notebook, ("02_activities/assignment_1.ipynb",), "assignment-1")
         with tempfile.TemporaryDirectory() as directory:
@@ -181,10 +327,14 @@ class ReconciliationTests(unittest.TestCase):
                                            "https://github.com/ada/course/pull/7"}, "open"),
                                            snapshot, second.criteria, None, second_pass=second)
             report = path.read_text(encoding="utf-8")
-        self.assertIn("original 0, AI 4", report)
-        self.assertIn("Applied: Generation implementation / Developer and user prompts", report)
-        self.assertIn("Disputed: Generated content / Source-faithful summary", report)
-        self.assertIn("Pending", report)
+        self.assertIn("Proposed score:", report)
+        self.assertIn("Proposed classification:", report)
+        self.assertIn("| Generated content / Summary at most 1,000 tokens | Pending/2:", report)
+        self.assertIn("| Rubric element | Non-AI Review | AI Review | Composite Review |", report)
+        self.assertIn("Both system and user roles are present", report)
+        self.assertIn("The summary's faithfulness needs checking", report)
+        self.assertNotIn("## Independent AI review", report)
+        self.assertTrue(report.rstrip().endswith("|"))
         self.assertIn("Facilitator confirmation is required", report)
 
 

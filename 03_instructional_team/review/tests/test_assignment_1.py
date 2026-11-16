@@ -270,8 +270,8 @@ class RubricTests(unittest.TestCase):
         self.assertEqual(row.parts[2].earned, 0)
 
     def test_grade_boundaries(self):
-        self.assertEqual([review.grade_label(x) for x in (24, 25, 64, 65)],
-                         ["Missing", "Incomplete", "Incomplete", "Complete"])
+        self.assertEqual([review.grade_label(x) for x in (24, 25, 59.5, 60, 65)],
+                         ["Missing", "Incomplete", "Incomplete", "Complete", "Complete"])
         self.assertEqual(review.grade_label(90, True), "Pending")
 
     def test_each_criterion_has_the_agreed_point_cap(self):
