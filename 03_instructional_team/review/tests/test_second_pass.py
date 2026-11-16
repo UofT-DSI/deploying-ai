@@ -145,6 +145,29 @@ class CompositeTests(unittest.TestCase):
         self.assertIn("citation", result.judgments[0].reason.lower())
         self.assertTrue(all(item.status == "scored" for item in result.judgments[1:]))
 
+    def test_composite_rejects_uncited_score_reduction(self):
+        notebook = {"cells": [{"cell_type": "code", "source": ["print('article')"]}]}
+        criteria = assess(notebook)
+        first = criteria[0]
+        parts = list(first.parts)
+        parts[0] = replace(parts[0], earned=2, evidence="Code cell 1: print('article')")
+        criteria = (replace(first, parts=tuple(parts)),) + criteria[1:]
+        bundle = build_evidence(notebook, None, None)
+        specs = rubric_specs(criteria)
+        independent = JudgeReview(tuple(Judgment(spec.part_id, 0, "scored", (), "No evidence.")
+                                        for spec in specs))
+        payload = {"judgments": [{"part_id": spec.part_id, "points": 0, "status": "scored",
+                                  "evidence": [], "reason": "No award.", "review_needed": False} for spec in specs],
+                   "encouragements": [], "improvements": []}
+        client = Mock()
+        client.responses.create.return_value = Mock(status="completed", output=[], output_text=json.dumps(payload))
+        composite = composite_review(criteria, independent, bundle, client=client)
+        self.assertEqual(composite.judgments[0].status, "unavailable")
+        self.assertEqual(composite.judgments[1].status, "scored")
+        result = reconcile(criteria, independent, bundle, composite)
+        self.assertEqual(result.criteria[0].parts[0].earned, 2)
+        self.assertTrue(result.decisions[0].review_needed)
+
     def test_non_ai_evidence_is_redacted_before_composite_request(self):
         criteria = assess({"cells": []})
         first = criteria[0]
@@ -196,6 +219,40 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(result.criteria[0].parts[0].earned, 2)
         self.assertEqual(result.decisions[0].composite_score, 2)
         self.assertEqual(result.decisions[0].status, "fallback")
+
+    def test_uncited_direct_composite_reduction_keeps_non_ai_points(self):
+        notebook = {"cells": [{"cell_type": "code", "source": ["print('article')"]}]}
+        criteria = assess(notebook)
+        first = criteria[0]
+        parts = list(first.parts)
+        parts[0] = replace(parts[0], earned=2, evidence="Code cell 1: print('article')")
+        criteria = (replace(first, parts=tuple(parts)),) + criteria[1:]
+        bundle = build_evidence(notebook, None, None)
+        independent = JudgeReview((Judgment("c01p01", 2, "scored",
+                                              (("code", 1, "print('article')"),), "Observed."),))
+        composite = CompositeReview((CompositeJudgment("c01p01", 0, "scored", (),
+                                                       "No award.", False),))
+        result = reconcile(criteria, independent, bundle, composite)
+        self.assertEqual(result.criteria[0].parts[0].earned, 2)
+        self.assertEqual(result.decisions[0].status, "fallback")
+
+    def test_cited_composite_reduction_remains_a_reviewable_proposal(self):
+        notebook = {"cells": [{"cell_type": "code", "source": ["print('article')"]}]}
+        criteria = assess(notebook)
+        first = criteria[0]
+        parts = list(first.parts)
+        parts[0] = replace(parts[0], earned=2, evidence="Code cell 1: print('article')")
+        criteria = (replace(first, parts=tuple(parts)),) + criteria[1:]
+        bundle = build_evidence(notebook, None, None)
+        independent = JudgeReview((Judgment("c01p01", 2, "scored",
+                                              (("code", 1, "print('article')"),), "Observed."),))
+        composite = CompositeReview((CompositeJudgment("c01p01", 0, "scored",
+                                                       (Citation("code", 1, "print('article')"),),
+                                                       "The cited code does not select the assigned article.", True),))
+        result = reconcile(criteria, independent, bundle, composite)
+        self.assertEqual(result.criteria[0].parts[0].earned, 0)
+        self.assertEqual(result.decisions[0].status, "proposed")
+        self.assertTrue(result.decisions[0].review_needed)
 
     def test_unavailable_ai_part_is_named_in_appendix(self):
         notebook = {"cells": [{"cell_type": "code", "source": ["print('hello')"]}]}

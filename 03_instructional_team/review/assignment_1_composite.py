@@ -138,6 +138,8 @@ def composite_review(criteria: tuple[Criterion, ...], independent: JudgeReview,
         expected: dict[str, PartSpec] = {spec.part_id: spec for spec in specs}
         if not isinstance(raw, list) or len(raw) != len(expected):
             raise ValueError("missing or extra rubric parts")
+        original_points = {spec.part_id: part.earned for spec, part in zip(
+            specs, (part for row in criteria for part in row.parts))}
         judgments = []
         seen = set()
         for item in raw:
@@ -161,9 +163,9 @@ def composite_review(criteria: tuple[Criterion, ...], independent: JudgeReview,
                 judgments.append(CompositeJudgment(part_id, 0, "unavailable", (),
                                                     "Composite citation did not match the available evidence.", True))
                 continue
-            if status == "scored" and points > 0 and not citations:
+            if status == "scored" and points != original_points[part_id] and not citations:
                 judgments.append(CompositeJudgment(part_id, 0, "unavailable", (),
-                                                    "Composite award lacks an evidence citation.", True))
+                                                    "Composite score change lacks an evidence citation.", True))
                 continue
             judgments.append(CompositeJudgment(part_id, float(points), status, citations,
                                                 item["reason"].strip(), item["review_needed"]))

@@ -149,7 +149,8 @@ def _reconcile_composite(criteria: tuple[Criterion, ...], review: JudgeReview,
                 resolved = part
                 selected = None
                 reason = "Trusted evidence for this rubric part is unavailable."
-            elif choice and choice.status == "scored" and choice_valid and (choice.points == 0 or choice.evidence):
+            elif choice and choice.status == "scored" and choice_valid and (
+                    choice.evidence or choice.points == part.earned == 0):
                 status = "agreed" if ai and ai.points == part.earned == choice.points else "proposed"
                 citation_text = "; ".join(f"{item.kind.title()} cell {item.cell}: {item.excerpt[:100]}"
                                           for item in choice.evidence)
