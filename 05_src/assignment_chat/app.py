@@ -1,13 +1,14 @@
 import sys
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from assignment_chat.main import get_graph
-from langchain_core.messages import HumanMessage, AIMessage
-import gradio as gr
-from dotenv import load_dotenv
 import logging
+
+import gradio as gr
+from assignment_chat.main import get_graph
+from dotenv import load_dotenv
+from langchain_core.messages import AIMessage, HumanMessage
 
 load_dotenv('.secrets')
 _logs = logging.getLogger(__name__)

@@ -4,7 +4,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 from assignment_chat.tools_conversion import convert_units

@@ -3,13 +3,13 @@
 import json
 import re
 from functools import lru_cache
+from itertools import pairwise
 from pathlib import Path
 
 import chromadb
 import numpy as np
 from langchain.tools import tool
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
-
 
 HERE = Path(__file__).resolve().parent
 
@@ -23,7 +23,7 @@ def search_assets():
 
 def embed_query(query: str, model: dict) -> list[float]:
     tokens = [word for word in re.findall(r"(?u)\b\w\w+\b", query.lower()) if word not in ENGLISH_STOP_WORDS]
-    terms = tokens + [f"{a} {b}" for a, b in zip(tokens, tokens[1:])]
+    terms = tokens + [f"{a} {b}" for a, b in pairwise(tokens)]
     vector = np.zeros(len(model["vocabulary"]), dtype=float)
     for term in terms:
         if term in model["vocabulary"]:

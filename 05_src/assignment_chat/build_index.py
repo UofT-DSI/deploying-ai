@@ -7,7 +7,6 @@ import chromadb
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 SOURCES = (ROOT / "02_activities" / "assignment_2.md", ROOT / "README.md",
