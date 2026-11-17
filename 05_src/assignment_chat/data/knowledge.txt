@@ -1,0 +1,14 @@
+Title: Best Practices for Production AI Systems
+Author: DSI Research Team
+
+Section 1: Data-Centric AI
+In production AI engineering, data quality is more important than model size. Data cleaning, deduplication, and schema validation prevent dirty data from corrupting downstream models. Synthetic data can help augment small datasets, but it should be validated to avoid compounding errors.
+
+Section 2: Caching and Latency
+Real-world systems must use caching to reduce latency and API expenses. Exact match caching returns results for identical user prompts immediately. Semantic caching computes vector embeddings of user queries and returns saved responses if the similarity threshold is high enough.
+
+Section 3: Model Routing
+Not every query requires a large frontier model. A model router inspects incoming requests and sends simple questions to cheap, fast models like Gemini Flash or GPT-4o-mini. Complex reasoning tasks are routed to heavier models. This setup saves up to 70% in API costs.
+
+Section 4: Guardrails and Safety
+Every user-facing application must implement guardrails at both the input and output stages. Input guardrails check for prompt injection, sensitive data leakage, and toxic queries. Output guardrails verify factual consistency and formatting rules before the user sees the answer.
