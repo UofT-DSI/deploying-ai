@@ -33,3 +33,5 @@ docs/
 *.txt
 
 *.zip
+# ProtinGPT local ChromaDB database
+/05_src/assignment_chat/chroma_db/
