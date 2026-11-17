@@ -1,16 +1,16 @@
 # Assignment submission reviewer
 
-Run this tool from the repository base directory to check Assignment 1 or Assignment 2 submissions. It writes one CSV report containing every student in the input. Assignment 1 also produces one editable Markdown draft assessment per student. The facilitator confirms or changes the assessment before assigning a final grade. Assignment 2 remains PR discovery only.
+Run this tool from the repository base directory to check Assignment 1 or Assignment 2 submissions. It writes one CSV report containing every student in the input and one editable Markdown draft assessment per student. The facilitator confirms or changes the assessment before assigning a final grade.
 
 ## Runtime requirements
 
 - Python 3.11 or newer
 - [GitHub CLI](https://cli.github.com/) installed and authenticated with `gh auth login`
 - Access to each supplied student repository
-- Docker Desktop (or a compatible Docker daemon) running for Assignment 1 evaluation
-- `OPENAI_API_KEY` in the facilitator environment for Assignment 1 execution, independent AI review, and composite assessment, using a limited course credential
+- Docker Desktop (or a compatible Docker daemon) running for execution
+- A limited `OPENAI_API_KEY` in the facilitator environment for Assignment 1, or in `05_src/.secrets` for Assignment 2
 
-The tool reads GitHub PR information and the assigned notebook from the selected Assignment 1 PR commit. It does not post to GitHub.
+The tool reads GitHub PR information and the selected Assignment 1 notebook or Assignment 2 project from one PR head commit. It does not post to GitHub.
 
 ## Run with student arguments
 
@@ -42,9 +42,60 @@ For Assignment 1 draft assessments, use `--assignment 1` after setting a limited
 uv run python 03_instructional_team/review/review.py --csv students.csv --assignment 1
 ```
 
-Use `--output-dir PATH` to choose where reports go. By default, each run creates a new CSV under `03_instructional_team/review/reports`; Assignment 1 Markdown reports sit beside it. The default reports directory is ignored by Git because reports contain student names and email addresses. If you choose another output directory, keep it private.
+Use `--output-dir PATH` to choose where reports go. By default, each run creates a new CSV and student Markdown drafts under `03_instructional_team/review/reports`. The default reports directory is ignored by Git because reports contain student names and email addresses. If you choose another output directory, keep it private.
 
 The CLI prints counts of `submitted`, `not_submitted`, `warning`, and `error` rows followed by the CSV path. It derives the repository from the listing URL, checks open and closed PRs, and selects the newest PR whose title resembles the requested assignment (for example, `Assignment 1`, `Assignment #1`, or `Assignment one done`). If the title does not name an assignment, the assignment branch can identify it. The CSV includes the input row number, student's details, repository, assignment, status, selected PR link, PR state, missing input items, and a note for closed or merged PRs.
+
+## Assignment 2 assessment
+
+The [Assignment 2 requirements](../../02_activities/assignment_2.md) define acceptable implementations. The reviewer fetches a bounded `05_src/assignment_chat` tree from the selected commit, infers a Python startup file from the README or common file names, and starts it in the course container. It probes a reachable Gradio chat endpoint, or a named chat callable when the script exits, with memory, prompt-protection, restricted-topic, and three project-specific service questions. An interface without either boundary or an unclear startup path is marked for facilitator review. The real OpenAI key stays on the host; the container receives a short-lived, limited gateway token. No student-specific third-party credentials are supplied.
+
+| Rubric element | Points |
+| --- | ---: |
+| API-backed service | 10 |
+| API response transformation | 10 |
+| Semantic query behavior | 12 |
+| Semantic data setup | 8 |
+| Third-service tool use | 10 |
+| Third-service behavior | 10 |
+| Chat interface | 5 |
+| Distinct personality | 4 |
+| Conversation memory | 6 |
+| Prompt protection | 7 |
+| Restricted topics | 8 |
+| Project explanation | 5 |
+| Reproducible project | 5 |
+
+The source and probe transcript are bounded evidence. A non-AI pass records objective partial credit. An independent AI pass proposes scores for every element, and a composite pass checks those proposals against the non-AI pass and exact source or probe citations. Invalid citations discard the AI pass. Disagreements and unobserved behavior remain Pending. The draft sums supported points and shows Complete at 60 or above, Incomplete from 25 through 59, and Missing below 25. Pending overrides the overall label while the numeric classification remains visible. Every proposed score and its evidence appears in the editable report. The facilitator resolves uncertainty and confirms the final grade.
+
+An unavailable outside API, absent startup instructions, Docker failure, or unsupported chat boundary does not prove a student failure. Source evidence can still receive partial credit; the report lists the runtime checks to perform manually. A later student in the CSV is assessed even if an earlier submission fails. The expected `assignment-2` branch and changed paths are shown outside the 100-point rubric. The reviewer never posts feedback or a grade.
+
+### Assignment 2 module interface
+
+| Function | Parameters | Returns |
+| --- | --- | --- |
+| `fetch_project_snapshot(repo, pr, api)` | `repo`: owner/name; `pr`: selected PR; `api`: GitHub API callback | `ProjectSnapshot(sha, files, changed_paths, branch)`; raises `ProjectMissing` or `ProjectUnavailable`. |
+| `source_evidence(snapshot, key)` | `snapshot`: selected project; `key`: facilitator OpenAI key or `None` | Bounded file and line evidence. |
+| `run_project(snapshot, probes, key, image, capture, remove)` | `snapshot`: selected project; `probes`: chat messages; `key`: host key; `image`: course image; `capture` and `remove`: container callbacks | Runtime state and observed exchanges. |
+| `mechanical_pass(entries, runtime)` | `entries`: source and runtime evidence; `runtime`: runner result | Objective partial scores for all 13 elements. |
+| `ai_pass(entries, key, *, first=None, baseline=None, client=None)` | `entries`: evidence; `key`: host key; `first`: independent pass for composite review; `baseline`: non-AI pass; `client`: optional API client | Citation-validated scores or an unavailable reason. |
+| `reconcile(first, second, runtime, baseline=None)` | `first`: independent pass; `second`: composite pass; `runtime`: runner result; `baseline`: non-AI pass | Proposed points and Pending flags for all elements. |
+| `report(snapshot, runtime, scores, issue, student, pr_url, key, first=None, second=None, baseline=None)` | Submission, review, student, and credential-redaction inputs | Private Markdown draft text. |
+
+This example runs the objective pass without a student app or API call:
+
+```python
+import sys
+
+sys.path.insert(0, "03_instructional_team/review")
+from assignment_2_review import mechanical_pass, runtime_evidence, source_evidence
+from assignment_2_submission import ProjectSnapshot
+
+snapshot = ProjectSnapshot("example-sha", {"readme.md": b"# Example chat\n", "app.py": b"import gradio as gr\nchat = gr.ChatInterface(lambda message, history: message)\n"}, (), "assignment-2")
+runtime = {"state": "unavailable", "reason": "Example has not been launched", "exchanges": []}
+evidence = source_evidence(snapshot, None) + runtime_evidence(runtime, None)
+print([(item.id, item.points, item.pending) for item in mechanical_pass(evidence, runtime)])
+```
 
 ## Assignment 1 assessment
 

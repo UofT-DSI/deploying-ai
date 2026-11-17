@@ -9,6 +9,7 @@ COPY 02_activities/documents/ ./02_activities/documents/
 COPY 05_src/utils/ ./05_src/utils/
 COPY 03_instructional_team/review/course_workspace.py ./course_workspace.py
 COPY 03_instructional_team/review/execute_notebook.py ./execute_notebook.py
+COPY 03_instructional_team/review/execute_chat.py ./execute_chat.py
 ENV PATH="/course/.venv/bin:$PATH"
 ENV PYTHONPATH="/course/05_src"
 WORKDIR /course/02_activities

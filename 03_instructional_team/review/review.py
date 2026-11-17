@@ -29,6 +29,23 @@ from assignment_1_evidence import EvidenceLimit, _redact, build_evidence
 from assignment_1_judge import judge_review, rubric_specs
 from assignment_1_reconcile import Reconciliation, reconcile
 from assignment_1_rubric import assess, grade_label
+from assignment_2_review import ai_pass as assignment_2_ai_pass
+from assignment_2_review import (
+    default_probes,
+    mechanical_pass,
+    run_project,
+    runtime_evidence,
+    secret_key,
+    service_probes,
+    source_evidence,
+)
+from assignment_2_review import reconcile as assignment_2_reconcile
+from assignment_2_review import report as assignment_2_report
+from assignment_2_submission import (
+    ProjectMissing,
+    ProjectUnavailable,
+    fetch_project_snapshot,
+)
 from course_workspace import ASSIGNED_PDFS
 
 DEFAULT_REPORTS = Path("03_instructional_team/review/reports")
@@ -42,7 +59,7 @@ def course_image_name() -> str:
     digest = hashlib.sha256()
     files = [COURSE_ROOT / "pyproject.toml", COURSE_ROOT / "uv.lock",
              Path(__file__).with_name("Dockerfile"), Path(__file__).with_name("execute_notebook.py"),
-             Path(__file__).with_name("course_workspace.py")]
+             Path(__file__).with_name("course_workspace.py"), Path(__file__).with_name("execute_chat.py")]
     files.extend(COURSE_ROOT / pdf for pdf in COURSE_PDFS)
     files.extend(COURSE_ROOT / helper for helper in COURSE_HELPERS)
     for source in files:
@@ -174,6 +191,7 @@ def build_image() -> str | None:
             review_dir.mkdir(parents=True)
             shutil.copy2(Path(__file__).with_name("Dockerfile"), review_dir / "Dockerfile")
             shutil.copy2(Path(__file__).with_name("execute_notebook.py"), review_dir / "execute_notebook.py")
+            shutil.copy2(Path(__file__).with_name("execute_chat.py"), review_dir / "execute_chat.py")
             shutil.copy2(Path(__file__).with_name("course_workspace.py"), review_dir / "course_workspace.py")
             documents = context / "02_activities" / "documents"
             documents.mkdir(parents=True)
@@ -219,7 +237,7 @@ def remove_container(name: str) -> None:
         pass
 
 
-def capture_docker(command: list[str], name: str) -> tuple[bytes | None, bytes, str | None]:
+def capture_docker(command: list[str], name: str, timeout: int = 900) -> tuple[bytes | None, bytes, str | None]:
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = [bytearray(), bytearray()]
     exceeded = threading.Event()
@@ -242,7 +260,7 @@ def capture_docker(command: list[str], name: str) -> tuple[bytes | None, bytes, 
         thread.start()
     issue = None
     try:
-        process.wait(timeout=900)
+        process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         issue = "Notebook execution timed out; facilitator review required"
         process.kill()
@@ -673,12 +691,60 @@ def main(argv: list[str] | None = None) -> int:
             updated_items.append((student, assignment, result))
             assessments.append((student, result, snapshot, criteria, execution_note, substitutions, second_pass))
         items = updated_items
+    if assignments == (2,):
+        key = secret_key()
+        setup_checked = False
+        setup_issue = None
+        updated_items = []
+        for student, assignment, result in items:
+            snapshot = None
+            runtime = None
+            scores = None
+            first = None
+            second = None
+            baseline = None
+            issue = None
+            if result.kind == "submitted":
+                try:
+                    snapshot = fetch_project_snapshot(student.repo, result.primary, github_api)
+                    source = source_evidence(snapshot, key)
+                    probes = default_probes() + service_probes(source, key)
+                    if not setup_checked:
+                        setup_issue = build_image()
+                        setup_checked = True
+                    if setup_issue:
+                        runtime = {"state": "unavailable", "reason": setup_issue, "exchanges": []}
+                    else:
+                        try:
+                            runtime = run_project(snapshot, probes, key, course_image_name(), capture_docker, remove_container)
+                        except OSError as exc:
+                            detail = str(exc).replace(key, "[REDACTED]") if key else str(exc)
+                            runtime = {"state": "unavailable", "reason": "Project launch unavailable: " + detail,
+                                       "exchanges": []}
+                    evidence = source + runtime_evidence(runtime, key)
+                    baseline = mechanical_pass(evidence, runtime)
+                    first, first_issue = assignment_2_ai_pass(evidence, key)
+                    second, second_issue = assignment_2_ai_pass(evidence, key, first=first, baseline=baseline) if first else (None, first_issue)
+                    scores = assignment_2_reconcile(first, second, runtime, baseline)
+                    issue = second_issue or first_issue
+                except ProjectMissing as exc:
+                    result = Result("warning", result.primary, result.state, str(exc))
+                except (ProjectUnavailable, LookupFailure) as exc:
+                    result = Result("unverifiable", result.primary, result.state, str(exc))
+            updated_items.append((student, assignment, result))
+            assessments.append((student, result, snapshot, runtime, scores, issue, first, second, baseline))
+        items = updated_items
     try:
         path = write_report(items, output_dir)
         if assignments == (1,):
             for index, (student, result, snapshot, criteria, execution_note, substitutions, second_pass) in enumerate(assessments, 1):
                 write_assignment_report(path.with_name(f"{path.stem}-student-{index}.md"), student, result,
                                         snapshot, criteria, execution_note, substitutions, second_pass)
+        if assignments == (2,):
+            for index, (student, result, snapshot, runtime, scores, issue, first, second, baseline) in enumerate(assessments, 1):
+                content = assignment_2_report(snapshot, runtime, scores, issue or result.reason, student.name,
+                                              (result.primary or {}).get("html_url", ""), key, first, second, baseline)
+                path.with_name(f"{path.stem}-student-{index}.md").write_text(content, encoding="utf-8")
     except OSError as exc:
         print(f"Could not write reports: {exc}")
         return 2
