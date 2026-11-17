@@ -69,7 +69,7 @@ The application currently lives in `gotrain_chat/` during development. For submi
 
    ```dotenv
    API_GATEWAY_KEY=api_gateway_key
-   GO_API_KEY=your_metrolinx_api_key
+   GO_API_KEY=metrolinx_api_key
    ```
 
 4. From the `05_src/assignment_chat/` directory, initialize or check the local knowledge index if needed:
