@@ -14,8 +14,6 @@ from langchain_core.messages import (
 from go_api import get_go_train
 from semantic_search import search_knowledge
 from guardrails import blocked_request
-
-# NEW: Service 3
 from service_alerts import check_go_service_alerts
 
 
