@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deploying AI · Capstone</title>
+  <style>
+    :root { color-scheme: light; --ink:#142b3c; --muted:#526878; --paper:#f7f9f8; --line:#cfdbdc; --teal:#086a69; --gold:#b46b16; --white:#fff; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:clamp(1rem,1.1vw,1.16rem)/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    a { color:var(--teal); text-underline-offset:.2em; }
+    a:focus-visible { outline:3px solid var(--gold); outline-offset:3px; }
+    .top { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:1rem; padding:.55rem clamp(1rem,3vw,2rem); background:rgba(255,255,255,.96); border-bottom:1px solid var(--line); }
+    .brand { margin-right:auto; font-size:.8rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; white-space:nowrap; }
+    nav { display:flex; gap:.8rem; overflow-x:auto; white-space:nowrap; font-size:.8rem; }
+    nav a { text-decoration:none; font-weight:650; }
+    main { max-width:1120px; margin:auto; }
+    .slide { min-height:85vh; padding:clamp(1.6rem,5vw,4rem) clamp(1.1rem,5vw,4rem); border-bottom:1px solid var(--line); display:flex; flex-direction:column; justify-content:center; }
+    .eyebrow { color:var(--teal); text-transform:uppercase; letter-spacing:.16em; font-size:.75rem; font-weight:800; }
+    h1,h2,h3 { line-height:1.12; letter-spacing:-.025em; }
+    h1 { font-size:clamp(2.7rem,6vw,5.2rem); margin:.5rem 0 1rem; max-width:15ch; }
+    h2 { font-size:clamp(2rem,4vw,3.5rem); margin:.45rem 0 1.1rem; max-width:19ch; }
+    h3 { font-size:1.12rem; margin:.1rem 0 .45rem; }
+    p { max-width:67ch; margin:.45rem 0 1rem; }
+    .lead { font-size:clamp(1.2rem,2vw,1.65rem); line-height:1.4; max-width:50ch; }
+    .muted,.source { color:var(--muted); }
+    .source { font-size:.78rem; margin-top:1.2rem; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:.9rem; margin:1rem 0; }
+    .card { background:var(--white); border:1px solid var(--line); border-left:4px solid var(--teal); padding:1rem 1.15rem; border-radius:.35rem; }
+    .card p:last-child { margin-bottom:0; }
+    .flow { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem; margin:1rem 0; }
+    .flow span { padding:.55rem .75rem; border:1px solid var(--line); background:var(--white); border-radius:.3rem; font-weight:700; }
+    .flow b { color:var(--teal); }
+    .steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,275px),1fr)); gap:.65rem; padding:0; list-style:none; counter-reset:step; }
+    .steps li { counter-increment:step; background:var(--white); border:1px solid var(--line); border-radius:.35rem; padding:.8rem 1rem; }
+    .steps li::before { content:counter(step,decimal-leading-zero); display:block; color:var(--teal); font-weight:850; font-size:.83rem; letter-spacing:.1em; }
+    .steps strong { display:block; }
+    .steps small { display:block; color:var(--muted); font-size:.85rem; line-height:1.4; }
+    .cue { margin-top:1rem; padding:.8rem 1rem; background:#e9f3f0; border-left:4px solid var(--teal); font-size:.9rem; }
+    .cue strong { color:var(--teal); }
+    .schedule { display:grid; gap:.45rem; max-width:760px; }
+    .slot { display:grid; grid-template-columns:5rem 1fr; gap:.7rem; padding:.5rem .7rem; border-bottom:1px solid var(--line); }
+    .slot time { font-weight:850; color:var(--teal); }
+    code { background:#e6eeee; padding:.1rem .3rem; border-radius:.2rem; }
+    ul { padding-left:1.2rem; }
+    li { margin-bottom:.35rem; }
+    .next { margin-top:1rem; font-weight:700; }
+    @media (max-width:650px) { .top { align-items:flex-start; flex-direction:column; gap:.2rem; } .slide { min-height:auto; padding-block:2.8rem; } .slot { grid-template-columns:4.3rem 1fr; } }
+    @media print { .top { display:none; } .slide { min-height:0; break-after:page; background:white; } a { color:var(--ink); } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">DSI · Deploying AI</div>
+    <nav aria-label="Slide navigation">
+      <a href="#opening">Start</a><a href="#harness">Harness</a><a href="#instructions">Instructions</a><a href="#skills">Skills</a><a href="#loop">Loop</a><a href="#app">App</a><a href="#course">Course</a><a href="#run">Run of show</a><a href="#brainstorm">Steps</a><a href="#close">Close</a>
+    </nav>
+  </header>
+  <main>
+    <section class="slide" id="opening" aria-labelledby="opening-title">
+      <div class="eyebrow">Capstone · 45 minutes · 01 / 15</div>
+      <h1 id="opening-title">One small app. The whole engineering loop.</h1>
+      <p class="lead">We will build a course-question assistant while connecting the coding agent’s work to the AI engineering ideas we have studied.</p>
+      <div class="flow" aria-label="Session flow"><span>Discuss a step</span><b>→</b><span>Watch it run</span><b>→</b><span>Inspect the result</span></div>
+      <p class="cue"><strong>Say:</strong> Keep this deck beside the coding window. The app is intentionally small so we can see the decisions behind it.</p>
+      <p class="next"><a href="#harness">Next: what is doing the work? →</a></p>
+    </section>
+
+    <section class="slide" id="harness" aria-labelledby="harness-title">
+      <div class="eyebrow">Mental model · 02 / 15</div>
+      <h2 id="harness-title">Model + harness = agent</h2>
+      <p class="lead">The model supplies reasoning. The harness gives it a workspace, tools, state, execution, and feedback.</p>
+      <div class="grid">
+        <div class="card"><h3>Model</h3><p>Produces and interprets language. Its outputs are probabilistic.</p></div>
+        <div class="card"><h3>Coding harness</h3><p>Codex or Claude Code lets the model read files, run commands, edit code, and observe results.</p></div>
+        <div class="card"><h3>Our app</h3><p>A Gradio chat that retrieves course slides and calls a model. It is the product being built.</p></div>
+      </div>
+      <p class="cue"><strong>Course connection:</strong> The <a href="../slides/06_agents.pdf">Agents slides (PDF)</a> describe environment, tools, actions, planning, and feedback. The coding harness makes those pieces visible.</p>
+      <p class="source">Definition adapted from <a href="https://www.langchain.com/blog/the-anatomy-of-an-agent-harness">LangChain, “The Anatomy of an Agent Harness”</a>.</p>
+      <p class="next"><a href="#instructions">Next: project instructions →</a></p>
+    </section>
+
+    <section class="slide" id="instructions" aria-labelledby="instructions-title">
+      <div class="eyebrow">Project context · 03 / 15</div>
+      <h2 id="instructions-title">The repository gives the agent its working rules</h2>
+      <p class="lead">Before a skill runs, the coding agent needs to know this project’s conventions, commands, and boundaries.</p>
+      <div class="grid">
+        <div class="card"><h3><code>AGENTS.md</code></h3><p>Repository instructions that Codex reads along the path to the current directory. Put durable project rules here.</p></div>
+        <div class="card"><h3><code>CLAUDE.md</code></h3><p>Claude Code’s project guidance file. Claude Code can also read <code>AGENTS.md</code>, so teams can share repository rules across harnesses.</p></div>
+        <div class="card"><h3>Other useful files</h3><p><code>README.md</code> explains how to run the app; a plan records agreed work; tests specify behavior; <code>SKILL.md</code> defines a reusable procedure. Compound Engineering can also read its repository configuration.</p></div>
+      </div>
+      <p class="cue"><strong>Ask:</strong> Which instructions should apply to every task in this repository, and which belong only to a particular workflow?</p>
+      <p class="source"><a href="https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide">OpenAI on AGENTS.md</a> · <a href="https://code.claude.com/docs/en/memory">Claude Code memory documentation</a></p>
+      <p class="next"><a href="#skills">Next: reusable skills →</a></p>
+    </section>
+
+    <section class="slide" id="skills" aria-labelledby="skills-title">
+      <div class="eyebrow">Reusable guidance · 04 / 15</div>
+      <h2 id="skills-title">Skills make a workflow repeatable</h2>
+      <p class="lead">A skill packages instructions and, when useful, scripts or reference material. The harness loads what the task needs.</p>
+      <div class="grid">
+        <div class="card"><h3>Skill</h3><p>One reusable capability: brainstorm requirements, plan, implement, or review.</p></div>
+        <div class="card"><h3>Framework</h3><p>A coordinated way to combine skills and carry decisions between steps.</p></div>
+        <div class="card"><h3>Compound Engineering</h3><p>Our example framework: a six-step loop that turns a request into reviewed work and reusable learning.</p></div>
+      </div>
+      <p class="cue"><strong>Course connection:</strong> Skills are a form of prompt and context design. They do not replace evaluation; they make a procedure available when it is needed.</p>
+      <p class="source"><a href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview">Anthropic Agent Skills</a> · <a href="https://github.com/everyinc/compound-engineering-plugin">Compound Engineering repository</a> · <a href="../slides/04_prompt_engineering.pdf">Prompt Engineering slides (PDF)</a></p>
+      <p class="next"><a href="#loop">Next: follow the loop →</a></p>
+    </section>
+
+    <section class="slide" id="loop" aria-labelledby="loop-title">
+      <div class="eyebrow">Compound Engineering · 05 / 15</div>
+      <h2 id="loop-title">Six steps, one feedback loop</h2>
+      <ol class="steps">
+        <li><strong>Brainstorm</strong><small>Define the user task and boundaries.</small></li>
+        <li><strong>Plan</strong><small>Choose an approach and decide how to check it.</small></li>
+        <li><strong>Work</strong><small>Build the smallest useful implementation.</small></li>
+        <li><strong>Simplify</strong><small>Remove avoidable complexity.</small></li>
+        <li><strong>Review</strong><small>Test the result against the task and risks.</small></li>
+        <li><strong>Compound</strong><small>Keep a verified lesson for the next run.</small></li>
+      </ol>
+      <p class="cue"><strong>Ask:</strong> Where have we made a decision that later steps should preserve? Where can a test or review catch a model’s plausible but wrong output?</p>
+      <p class="source">Sequence from the <a href="https://github.com/everyinc/compound-engineering-plugin">Compound Engineering core loop</a>.</p>
+      <p class="next"><a href="#app">Next: the app we will build →</a></p>
+    </section>
+
+    <section class="slide" id="app" aria-labelledby="app-title">
+      <div class="eyebrow">Live example · 06 / 15</div>
+      <h2 id="app-title">Ask the course. Show the source.</h2>
+      <p class="lead">A learner asks a question. The app retrieves relevant slide sections, gives those passages to a model, and shows the cited headings.</p>
+      <div class="flow" aria-label="Retrieval augmented generation flow"><span>Question</span><b>→</b><span>Retrieve slides</span><b>→</b><span>Model answer</span><b>→</b><span>Source labels</span></div>
+      <div class="grid">
+        <div class="card"><h3>Try a supported question</h3><p>“How does embedding-based retrieval work?”</p></div>
+        <div class="card"><h3>Try a follow-up</h3><p>“How does it compare with keyword search?”</p></div>
+        <div class="card"><h3>Try a near miss</h3><p>“How can attention improve my romantic relationship?” The course’s attention slides do not answer that.</p></div>
+      </div>
+      <p class="cue"><strong>Course connection:</strong> Retrieval supplies context; the model generates. The citation is a lead for checking a claim, not proof that the claim is correct.</p>
+      <p class="source"><a href="../slides/05_rag.pdf">RAG slides (PDF)</a> · <a href="../slides/03_evaluation.pdf">Evaluation slides (PDF)</a></p>
+      <p class="next"><a href="#course">Next: connect the course →</a></p>
+    </section>
+
+    <section class="slide" id="course" aria-labelledby="course-title">
+      <div class="eyebrow">Course map · 07 / 15</div>
+      <h2 id="course-title">The build revisits the course</h2>
+      <div class="grid">
+        <div class="card"><h3>Brainstorm</h3><p><a href="../slides/01_introduction.pdf">Use-case planning</a> and <a href="../slides/08_dataset_eng.pdf">data coverage</a>: what should the assistant know?</p></div>
+        <div class="card"><h3>Plan</h3><p><a href="../slides/02_foundation_models.pdf">Probabilistic outputs</a>, <a href="../slides/04_prompt_engineering.pdf">instructions</a>, and <a href="../slides/05_rag.pdf">retrieval design</a>.</p></div>
+        <div class="card"><h3>Work</h3><p><a href="../slides/06_agents.pdf">Tools and feedback</a> in the coding harness; retrieved context in the app.</p></div>
+        <div class="card"><h3>Simplify</h3><p><a href="../slides/09_optimization.pdf">Cost and latency</a>; why <a href="../slides/07_finetuning.pdf">fine-tuning</a> is unnecessary for this factual task.</p></div>
+        <div class="card"><h3>Review</h3><p><a href="../slides/03_evaluation.pdf">Functional and factual checks</a> across a full answer, including unsupported questions.</p></div>
+        <div class="card"><h3>Compound</h3><p>Turn a verified failure into a better <a href="../slides/08_dataset_eng.pdf">example or source set</a> and a repeatable <a href="../slides/03_evaluation.pdf">evaluation</a>.</p></div>
+      </div>
+      <p class="cue"><strong>Say:</strong> We are not implementing every technique today. We are practicing when to choose one, how to test it, and when to defer it.</p>
+      <p class="next"><a href="#run">Next: pace the live run →</a></p>
+    </section>
+
+    <section class="slide" id="run" aria-labelledby="run-title">
+      <div class="eyebrow">Facilitation · 08 / 15</div>
+      <h2 id="run-title">45 minutes, with a progress check</h2>
+      <div class="schedule">
+        <div class="slot"><time>0–5</time><span>Harness, skills, and the app we are building</span></div>
+        <div class="slot"><time>5–11</time><span>Brainstorm: user task and data scope</span></div>
+        <div class="slot"><time>11–17</time><span>Plan: prompt, retrieval, and evaluation</span></div>
+        <div class="slot"><time>17–33</time><span>Work: Gradio chat and slide retrieval</span></div>
+        <div class="slot"><time>33–38</time><span>Simplify: what can we remove?</span></div>
+        <div class="slot"><time>38–42</time><span>Review: supported and unsupported questions</span></div>
+        <div class="slot"><time>42–45</time><span>Compound a real lesson; recap</span></div>
+      </div>
+      <p class="cue"><strong>At minute 33:</strong> If the live app is not runnable, inspect the plan, code, and checks produced so far. Keep the discussion moving and identify the next verification step.</p>
+      <p class="source">The <a href="instructor_runbook.md">instructor runbook</a> has prompts and preflight checks; <a href="demo_brief.md">demo brief</a> has the starting request.</p>
+      <p class="next"><a href="#brainstorm">Next: unpack each step →</a></p>
+    </section>
+
+    <section class="slide" id="brainstorm" aria-labelledby="brainstorm-title">
+      <div class="eyebrow">Step 1 · 09 / 15</div>
+      <h2 id="brainstorm-title">Brainstorm: decide what to build</h2>
+      <p class="lead">Gather requirements: user, task, scope, boundaries, and success criteria. Leave implementation sequencing for planning.</p>
+      <div class="grid">
+        <div class="card"><h3>In this demo</h3><p>Who asks questions? Which course slides count as sources? What should the app do when the source material does not answer?</p></div>
+        <div class="card"><h3>Different paths</h3><p>A small, clear request may end with a short chat brief. Ambiguous software work gets a durable requirements artifact. Non-software work follows its own brainstorm route.</p></div>
+        <div class="card"><h3>Handoff</h3><p>The agreed requirements become the input to <code>ce-plan</code>. No code is written here.</p></div>
+      </div>
+      <p class="cue"><strong>While it runs:</strong> Listen for questions about product behavior, not library choice or implementation order.</p>
+      <p class="source"><a href="https://github.com/EveryInc/compound-engineering-plugin/tree/main/skills/ce-brainstorm">Compound Engineering brainstorm skill</a> · <a href="../slides/01_introduction.pdf">Introduction slides (PDF)</a></p>
+      <p class="next"><a href="#plan">Next: plan →</a></p>
+    </section>
+
+    <section class="slide" id="plan" aria-labelledby="plan-title">
+      <div class="eyebrow">Step 2 · 10 / 15</div>
+      <h2 id="plan-title">Plan: decide how to build it</h2>
+      <p class="lead">Sequence the work, resolve technical choices, and decide how each part will be checked while preserving the brainstorm’s requirements.</p>
+      <div class="grid">
+        <div class="card"><h3>Order</h3><p>Read the slide corpus, retrieve relevant sections, compose a grounded answer, then add a Gradio conversation and checks.</p></div>
+        <div class="card"><h3>Optimize the approach</h3><p>Use existing repository patterns and the simplest viable retrieval design. Avoid adding a database or fine-tuning before evidence shows a need.</p></div>
+        <div class="card"><h3>Verification</h3><p>Specify supported, follow-up, and unsupported questions before implementation so the result can be judged.</p></div>
+      </div>
+      <p class="cue"><strong>While it runs:</strong> Watch the agent choose dependencies and checks. This is where cost, latency, and complexity tradeoffs are considered.</p>
+      <p class="source"><a href="https://github.com/EveryInc/compound-engineering-plugin/tree/main/skills/ce-plan">Compound Engineering plan skill</a> · <a href="../slides/09_optimization.pdf">Optimization slides (PDF)</a></p>
+      <p class="next"><a href="#work">Next: work →</a></p>
+    </section>
+
+    <section class="slide" id="work" aria-labelledby="work-title">
+      <div class="eyebrow">Step 3 · 11 / 15</div>
+      <h2 id="work-title">Work: implement and verify</h2>
+      <p class="lead"><code>ce-work</code> is an execution workflow. It carries the agreed plan through code changes and local verification, rather than stopping at plausible generated code.</p>
+      <div class="grid">
+        <div class="card"><h3>Take in the plan</h3><p>Check scope, existing code, workspace state, and the units of work before editing.</p></div>
+        <div class="card"><h3>Build in steps</h3><p>Implement the required behavior, integrate the parts, and keep the plan’s constraints in view.</p></div>
+        <div class="card"><h3>Show evidence</h3><p>Run meaningful checks, inspect failures, and complete the in-scope work. The standalone route also enters simplification and code review before shipping.</p></div>
+      </div>
+      <p class="cue"><strong>While it runs:</strong> Ask what the harness observed after each edit. A model’s first answer is a proposal; tool output and tests provide feedback.</p>
+      <p class="source"><a href="https://github.com/EveryInc/compound-engineering-plugin/tree/main/skills/ce-work">Compound Engineering work skill</a> · <a href="../slides/06_agents.pdf">Agents slides (PDF)</a></p>
+      <p class="next"><a href="#simplify">Next: simplify →</a></p>
+    </section>
+
+    <section class="slide" id="simplify" aria-labelledby="simplify-title">
+      <div class="eyebrow">Step 4 · 12 / 15</div>
+      <h2 id="simplify-title">Simplify: make the code maintainable</h2>
+      <p class="lead">Keep behavior, reduce the effort needed to understand and change the implementation. Fewer lines alone are not the goal.</p>
+      <div class="grid">
+        <div class="card"><h3>Inspect</h3><p>Look for duplicated logic, unnecessary layers, unused code, avoidable work, and tests or comments that add no value.</p></div>
+        <div class="card"><h3>Change carefully</h3><p>Prefer clear, explicit code. Preserve outputs, errors, ordering, safety checks, and tests that prove the feature works.</p></div>
+        <div class="card"><h3>Verify again</h3><p>Run the relevant checks after edits. If behavior preservation cannot be established, leave the change out.</p></div>
+      </div>
+      <p class="cue"><strong>While it runs:</strong> Can we explain the retrieval path in a minute? Does each helper earn its place?</p>
+      <p class="source"><a href="https://github.com/EveryInc/compound-engineering-plugin/tree/main/skills/ce-simplify-code">Compound Engineering simplify skill</a> · <a href="../slides/09_optimization.pdf">Optimization slides (PDF)</a></p>
+      <p class="next"><a href="#review">Next: review →</a></p>
+    </section>
+
+    <section class="slide" id="review" aria-labelledby="review-title">
+      <div class="eyebrow">Step 5 · 13 / 15</div>
+      <h2 id="review-title">Review: challenge both plan and code</h2>
+      <div class="grid">
+        <div class="card"><h3>Document review</h3><p>Read the requirements or plan; check coherence, feasibility, missing decisions, and risks; verify findings against the agreed goal; correct authorized issues.</p></div>
+        <div class="card"><h3>Code review</h3><p>Inspect the changed code and its intent; select risk-specific lenses; check correctness, regressions, tests, and project standards; report supported findings.</p></div>
+        <div class="card"><h3>Adversarial pass</h3><p>For substantial or risky work, try to break the assumptions. A configured second model can provide an independent pass; its findings still need verification.</p></div>
+      </div>
+      <p class="cue"><strong>While it runs:</strong> Ask for a question the app should decline. Check whether a displayed citation supports the answer, not just whether one appears.</p>
+      <p class="source"><a href="https://github.com/EveryInc/compound-engineering-plugin/tree/main/skills/ce-doc-review">Document review skill</a> · <a href="https://github.com/EveryInc/compound-engineering-plugin/tree/main/skills/ce-code-review">Code review skill</a> · <a href="../slides/03_evaluation.pdf">Evaluation slides (PDF)</a></p>
+      <p class="next"><a href="#compound">Next: compound →</a></p>
+    </section>
+
+    <section class="slide" id="compound" aria-labelledby="compound-title">
+      <div class="eyebrow">Step 6 · 14 / 15</div>
+      <h2 id="compound-title">Compound: reflect and keep the lesson</h2>
+      <p class="lead">After a verified problem is solved, ask what future work would benefit from remembering it.</p>
+      <div class="grid">
+        <div class="card"><h3>Find the actual lesson</h3><p>What belief proved wrong? What failure or review finding changed the implementation?</p></div>
+        <div class="card"><h3>Choose a durable form</h3><p>Keep it where it prevents a repeat: a test, lint rule, coding standard, or concise repository learning in documentation.</p></div>
+        <div class="card"><h3>Feed the next loop</h3><p>Future brainstorms and plans can reuse the evidence. If the outcome was routine and already clear from the code, there may be nothing to record.</p></div>
+      </div>
+      <p class="cue"><strong>While it runs:</strong> A failed unsupported-question check might become a regression test. Record the reason only if the code and test would not make it clear.</p>
+      <p class="source"><a href="https://github.com/EveryInc/compound-engineering-plugin/tree/main/skills/ce-compound">Compound Engineering learning skill</a> · <a href="../slides/03_evaluation.pdf">Evaluation slides (PDF)</a></p>
+      <p class="next"><a href="#close">Next: close →</a></p>
+    </section>
+
+    <section class="slide" id="close" aria-labelledby="close-title">
+      <div class="eyebrow">Wrap-up · 15 / 15</div>
+      <h2 id="close-title">Inspect the answer, then improve the system</h2>
+      <p class="lead">A working UI is a start. Ask whether the answer is supported, whether retrieval found the right passage, and what the next evaluation should test.</p>
+      <ul>
+        <li>What did the coding harness do that a bare model could not?</li>
+        <li>Which part belongs to the skill, and which part belongs to the app?</li>
+        <li>Which course question would reveal a failure in retrieval or grounding?</li>
+      </ul>
+      <p class="cue"><strong>Takeaway:</strong> The same engineering loop applies whether an agent writes the code or a team does. Good context, observable tests, review, and recorded learning make the next iteration better.</p>
+      <p class="source"><a href="https://www.langchain.com/blog/the-anatomy-of-an-agent-harness">Harness reference</a> · <a href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview">Skills reference</a> · <a href="https://github.com/everyinc/compound-engineering-plugin">Framework reference</a></p>
+      <p class="next"><a href="#opening">Back to start ↑</a></p>
+    </section>
+  </main>
+</body>
+</html>
