@@ -68,7 +68,7 @@ The application currently lives in `gotrain_chat/` during development. For submi
 3. Create `05_src/.secrets` (one directory above `assignment_chat/`):
 
    ```dotenv
-   API_GATEWAY_KEY=your_course_api_gateway_key
+   API_GATEWAY_KEY=api_gateway_key
    GO_API_KEY=your_metrolinx_api_key
    ```
 
