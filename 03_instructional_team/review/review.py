@@ -22,10 +22,13 @@ from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urlparse
 
+from dotenv import dotenv_values
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from api_gateway import notebook_gateway
 from assignment_1_composite import composite_review
 from assignment_1_evidence import EvidenceLimit, _redact, build_evidence
+from assignment_1_files import eligible_text_path, fetch_text_files
 from assignment_1_judge import judge_review, rubric_specs
 from assignment_1_reconcile import Reconciliation, reconcile
 from assignment_1_rubric import assess, grade_label
@@ -96,6 +99,7 @@ class AssignmentSnapshot(NamedTuple):
     notebook: dict
     changed_paths: tuple[str, ...]
     branch: str
+    text_files: dict[str, bytes] | None = None
 
 
 class LookupFailure(Exception):
@@ -160,6 +164,10 @@ def fetch_assignment_snapshot(repo: str, pr: dict) -> AssignmentSnapshot:
     except (KeyError, ValueError, TypeError, UnicodeError, binascii.Error) as exc:
         raise NotebookMissing(f"Assigned notebook is invalid: {exc}") from exc
     files = github_api(f"repos/{repo}/pulls/{number}/files?per_page=100", paginate=True)
+    try:
+        text_files = fetch_text_files(head_repo, sha, github_api)
+    except (TypeError, ValueError) as exc:
+        raise LookupFailure(str(exc)) from exc
     current = github_api(f"repos/{repo}/pulls/{number}")
     if not isinstance(files, list) or any(not isinstance(item, dict) or "filename" not in item for item in files):
         raise LookupFailure("GitHub returned an invalid PR file list")
@@ -167,12 +175,18 @@ def fetch_assignment_snapshot(repo: str, pr: dict) -> AssignmentSnapshot:
         raise LookupFailure("GitHub returned invalid PR metadata")
     if (current.get("head") or {}).get("sha") != sha:
         raise LookupFailure("PR head changed while retrieving its notebook; rerun to use a consistent snapshot")
-    return AssignmentSnapshot(sha, notebook, tuple(item["filename"] for item in files), head.get("ref") or "")
+    return AssignmentSnapshot(sha, notebook, tuple(item["filename"] for item in files), head.get("ref") or "", text_files)
 
 
-def redact(value: str) -> str:
-    secret = os.environ.get("OPENAI_API_KEY")
-    return value.replace(secret, "[REDACTED]") if secret else value
+def course_gateway_key() -> str | None:
+    return os.environ.get("API_GATEWAY_KEY") or dotenv_values(COURSE_ROOT / "05_src/.secrets").get("API_GATEWAY_KEY")
+
+
+def redact(value: str, key: str | None = None, gateway_key: str | None = None) -> str:
+    for secret in (key or os.environ.get("OPENAI_API_KEY"), gateway_key or os.environ.get("API_GATEWAY_KEY")):
+        if secret:
+            value = value.replace(secret, "[REDACTED]")
+    return value
 
 
 def build_image() -> str | None:
@@ -210,19 +224,20 @@ def build_image() -> str | None:
     return None
 
 
-def prepare_container() -> str | None:
-    if not os.environ.get("OPENAI_API_KEY"):
+def prepare_container(key: str | None = None) -> str | None:
+    key = key or os.environ.get("OPENAI_API_KEY")
+    if not key:
         return "OPENAI_API_KEY is unavailable to the evaluator"
     build_issue = build_image()
     if build_issue:
         return build_issue
     try:
         request = urllib.request.Request("https://api.openai.com/v1/models",
-                                         headers={"Authorization": "Bearer " + os.environ["OPENAI_API_KEY"]})
+                                         headers={"Authorization": "Bearer " + key})
         with urllib.request.urlopen(request, timeout=15):
             pass
     except (OSError, urllib.error.HTTPError) as exc:
-        return "OpenAI service preflight failed: " + redact(str(exc))
+        return "OpenAI service preflight failed: " + redact(str(exc), key)
     return None
 
 
@@ -280,14 +295,23 @@ def capture_docker(command: list[str], name: str, timeout: int = 900) -> tuple[b
     return (bytes(output[0]) if not issue else None), bytes(output[1]), issue
 
 
-def run_notebook(notebook: dict) -> tuple[dict | None, str | None]:
+def run_notebook(notebook: dict, key: str | None = None,
+                 text_files: dict[str, bytes] | None = None,
+                 gateway_key: str | None = None) -> tuple[dict | None, str | None]:
     name = "assignment-review-" + uuid.uuid4().hex[:12]
     with tempfile.TemporaryDirectory(prefix="assignment-review-") as tmp:
         folder = Path(tmp)
         (folder / "notebook.ipynb").write_text(json.dumps(notebook), encoding="utf-8")
-        with notebook_gateway(os.environ.get("OPENAI_API_KEY")) as gateway:
+        for path, content in (text_files or {}).items():
+            if not eligible_text_path(path):
+                raise ValueError("Submission text path is unsafe")
+            target = folder / "files" / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        with notebook_gateway(key or os.environ.get("OPENAI_API_KEY")) as gateway:
             command = ["docker", "run", "--rm", "--name", name, "--read-only",
                        "--tmpfs", "/tmp:rw,nosuid,size=256m", "--tmpfs", "/work:rw,nosuid,size=512m",
+                       "--tmpfs", "/course/02_activities/documents:rw,nosuid,size=64m",
                        "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128",
                        "--memory", "4g", "--cpus", "2", "--add-host", "host.docker.internal:host-gateway",
                        "--env", "HOME=/work", "--env", "IPYTHONDIR=/work/ipython",
@@ -295,11 +319,13 @@ def run_notebook(notebook: dict) -> tuple[dict | None, str | None]:
             if gateway:
                 port, token = gateway
                 command.extend(("--env", f"OPENAI_API_KEY={token}", "--env", f"OPENAI_BASE_URL=http://host.docker.internal:{port}/v1"))
+            if gateway_key:
+                command.extend(("--env", f"API_GATEWAY_KEY={gateway_key}"))
             command.extend((course_image_name(), "python", "/course/execute_notebook.py", "/input/notebook.ipynb"))
             try:
                 raw, stderr, issue = capture_docker(command, name)
             except OSError as exc:
-                return None, f"Docker execution failed: {redact(str(exc))}"
+                return None, f"Docker execution failed: {redact(str(exc), key, gateway_key)}"
         if issue:
             return None, issue
         try:
@@ -309,20 +335,23 @@ def run_notebook(notebook: dict) -> tuple[dict | None, str | None]:
             exceptions = re.findall(r"(?m)^[\w.]*?(?:Error|Exception):[^\r\n]*", error_text)
             detail = next((line for line in reversed(exceptions) if not line.startswith("CellExecutionError:")),
                           exceptions[-1] if exceptions else error_text.strip().splitlines()[-1] if error_text.strip() else "runner returned no result")
-            return None, "Notebook execution unavailable: " + redact(detail[:300])
+            return None, "Notebook execution unavailable: " + redact(detail[:300], key, gateway_key)
         if not valid_execution_artifact(executed):
             return None, "Notebook execution unavailable: invalid result shape"
         errors = [(i, item) for i, cell in enumerate(executed["cells"], 1)
                   for item in cell.get("outputs", []) if item.get("output_type") == "error"]
         if errors:
-            outcomes = [classify_execution_error(i, item, executed) for i, item in errors]
+            outcomes = [classify_execution_error(i, item, executed, key, gateway_key) for i, item in errors]
             return executed, next((issue for issue in outcomes if issue.startswith("Environment:")), outcomes[0])
         return executed, None
 
 
-def classify_execution_error(cell: int, error: dict, executed: dict) -> str:
+def classify_execution_error(cell: int, error: dict, executed: dict, key: str | None = None,
+                             gateway_key: str | None = None) -> str:
     name = str(error.get("ename", ""))
-    message = redact(str(error.get("evalue") or name or "unknown error"))
+    message = redact(str(error.get("evalue") or name or "unknown error"), key, gateway_key)
+    if "model not permitted" in message.lower():
+        return f"Environment: code cell {cell} requested a model outside the evaluator gateway policy"
     metadata = executed.get("metadata") or {}
     review = metadata.get("assignment_review") if isinstance(metadata, dict) else None
     unresolved = review.get("unresolved", []) if isinstance(review, dict) else []
@@ -508,12 +537,14 @@ def write_report(items: list[tuple[Student, int, Result]], output_dir: Path) -> 
 def write_assignment_report(path: Path, student: Student, result: Result,
                             snapshot: AssignmentSnapshot | None, criteria: tuple | None,
                             execution_note: str | None, substitutions: list[dict] | None = None,
-                            second_pass: Reconciliation | None = None) -> None:
+                            second_pass: Reconciliation | None = None,
+                            key: str | None = None, gateway_key: str | None = None) -> None:
     def clean(value: object) -> str:
-        return LOCAL_PATH.sub("[local path]", redact(str(value or ""))).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+        return LOCAL_PATH.sub("[local path]", redact(str(value or ""), key, gateway_key)).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
     def clean_evidence(value: object) -> str:
-        return clean(_redact(str(value or ""), (os.environ.get("OPENAI_API_KEY", ""),), student.name))
+        return clean(_redact(str(value or ""), (key or os.environ.get("OPENAI_API_KEY", ""),
+                                                gateway_key or os.environ.get("API_GATEWAY_KEY", "")), student.name))
 
     lines = ["# Assignment 1 — Draft assessment", "", f"- Student: {clean(student.name) or 'Unknown'}",
              f"- Email: {clean(student.email) or 'Missing'}",
@@ -644,6 +675,8 @@ def main(argv: list[str] | None = None) -> int:
             items.append((student, assignment, result))
     assessments = []
     if assignments == (1,):
+        key = secret_key()
+        gateway_key = course_gateway_key()
         setup_checked = False
         setup_issue = None
         updated_items = []
@@ -657,25 +690,26 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     snapshot = fetch_assignment_snapshot(student.repo, result.primary)
                     if not setup_checked:
-                        setup_issue = prepare_container()
+                        setup_issue = prepare_container(key)
                         setup_checked = True
                     if setup_issue:
                         executed, execution_note = None, setup_issue
                     else:
                         try:
-                            executed, execution_note = run_notebook(snapshot.notebook)
+                            executed, execution_note = run_notebook(snapshot.notebook, key, snapshot.text_files,
+                                                                    gateway_key)
                         except (OSError, ValueError) as exc:
-                            executed, execution_note = None, "Evaluator setup failed: " + redact(str(exc))
+                            executed, execution_note = None, "Evaluator setup failed: " + redact(str(exc), key, gateway_key)
                     blocked = execution_note if not executed or (execution_note or "").startswith("Environment:") else None
                     criteria = assess(snapshot.notebook, executed, blocked)
                     try:
                         bundle = build_evidence(snapshot.notebook, executed, blocked,
-                                                secrets=(os.environ.get("OPENAI_API_KEY", ""),),
+                                                secrets=(key or "", gateway_key or ""),
                                                 student_name=student.name)
-                        independent = judge_review(bundle, rubric_specs(criteria))
+                        independent = judge_review(bundle, rubric_specs(criteria), api_key=key)
                         composite = composite_review(criteria, independent, bundle,
-                                                     secrets=(os.environ.get("OPENAI_API_KEY", ""),),
-                                                     student_name=student.name)
+                                                     secrets=(key or "", gateway_key or ""), student_name=student.name,
+                                                     api_key=key)
                         second_pass = reconcile(criteria, independent, bundle, composite)
                         criteria = second_pass.criteria
                     except EvidenceLimit as exc:
@@ -739,7 +773,7 @@ def main(argv: list[str] | None = None) -> int:
         if assignments == (1,):
             for index, (student, result, snapshot, criteria, execution_note, substitutions, second_pass) in enumerate(assessments, 1):
                 write_assignment_report(path.with_name(f"{path.stem}-student-{index}.md"), student, result,
-                                        snapshot, criteria, execution_note, substitutions, second_pass)
+                                        snapshot, criteria, execution_note, substitutions, second_pass, key, gateway_key)
         if assignments == (2,):
             for index, (student, result, snapshot, runtime, scores, issue, first, second, baseline) in enumerate(assessments, 1):
                 content = assignment_2_report(snapshot, runtime, scores, issue or result.reason, student.name,

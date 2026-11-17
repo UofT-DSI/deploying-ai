@@ -55,6 +55,40 @@ class ExecutionTests(unittest.TestCase):
             self.assertIn("OPENAI_API_KEY", review.prepare_container())
         build.assert_not_called()
 
+    def test_file_resolved_credential_reaches_preflight_and_gateway(self):
+        seen = []
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+        def fake_urlopen(request, **kwargs):
+            seen.append(request.headers["Authorization"])
+            return Response()
+
+        with patch.dict(review.os.environ, {}, clear=True), \
+             patch.object(review, "build_image", return_value=None), \
+             patch.object(review.urllib.request, "urlopen", side_effect=fake_urlopen):
+            self.assertIsNone(review.prepare_container("file-key"))
+        self.assertEqual(seen, ["Bearer file-key"])
+
+        with patch.object(review, "notebook_gateway", return_value=nullcontext(None)) as gateway, \
+             patch.object(review, "capture_docker", return_value=(b'{"cells":[]}', b"", None)):
+            review.run_notebook({"cells": []}, "file-key")
+        gateway.assert_called_once_with("file-key")
+
+    def test_course_gateway_key_uses_environment_before_secrets_file(self):
+        with patch.dict(review.os.environ, {}, clear=True), \
+             patch.object(review, "dotenv_values", return_value={"API_GATEWAY_KEY": "file-gateway"}):
+            self.assertEqual(review.course_gateway_key(), "file-gateway")
+        with patch.dict(review.os.environ, {"API_GATEWAY_KEY": "env-gateway"}), \
+             patch.object(review, "dotenv_values") as dotenv:
+            self.assertEqual(review.course_gateway_key(), "env-gateway")
+        dotenv.assert_not_called()
+
     def test_container_uses_read_only_input_and_proxy_token(self):
         notebook = {"cells": [{"cell_type": "code", "source": ["print('fixture')"]}]}
         executed = {"cells": [{"outputs": [{"output_type": "stream", "text": "fixture"}]}]}
@@ -77,6 +111,40 @@ class ExecutionTests(unittest.TestCase):
         self.assertIsNone(issue)
         self.assertEqual(result, executed)
         self.assertEqual(len(seen), 1)
+
+    def test_text_file_is_staged_read_only_for_container_runner(self):
+        def fake_capture(command, name):
+            mount = command[command.index("--mount") + 1]
+            source = Path(mount.split(",")[1].removeprefix("source="))
+            self.assertEqual((source / "files/02_activities/documents/source.txt").read_text(), "article")
+            self.assertIn("/course/02_activities/documents:rw,nosuid,size=64m", command)
+            return b'{"cells":[]}', b"", None
+
+        with patch.object(review, "capture_docker", side_effect=fake_capture):
+            _, issue = review.run_notebook({"cells": []}, text_files={"02_activities/documents/source.txt": b"article"})
+        self.assertIsNone(issue)
+
+    def test_course_gateway_key_reaches_notebook_without_host_openai_key(self):
+        def fake_capture(command, name):
+            self.assertIn("API_GATEWAY_KEY=course-key", command)
+            self.assertNotIn("OPENAI_API_KEY=host-key", command)
+            return b'{"cells":[]}', b"", None
+
+        with patch.object(review, "capture_docker", side_effect=fake_capture):
+            _, issue = review.run_notebook({"cells": []}, "host-key", gateway_key="course-key")
+        self.assertIsNone(issue)
+
+    def test_course_gateway_key_is_redacted_from_execution_error(self):
+        artifact = {"cells": [{"outputs": [{"output_type": "error", "ename": "ValueError",
+                                           "evalue": "course-key was rejected"}]}]}
+        with patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
+            _, issue = review.run_notebook({"cells": []}, gateway_key="course-key")
+        self.assertNotIn("course-key", issue)
+
+    def test_unsafe_text_path_does_not_launch_container(self):
+        with patch.object(review, "capture_docker") as capture, self.assertRaisesRegex(ValueError, "unsafe"):
+            review.run_notebook({"cells": []}, text_files={"../source.txt": b"article"})
+        capture.assert_not_called()
 
     def test_malformed_executed_cell_is_unavailable_evidence(self):
         artifacts = (
@@ -141,6 +209,13 @@ class ExecutionTests(unittest.TestCase):
         with patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
             _, issue = review.run_notebook({"cells": []})
         self.assertEqual(issue, "Student: code cell 1 raised Error code: 400 - invalid request parameters")
+
+    def test_gateway_model_rejection_names_policy(self):
+        artifact = {"cells": [{"outputs": [{"output_type": "error", "ename": "PermissionDeniedError",
+                                           "evalue": "Error code: 403 - {'error': 'model not permitted'}"}]}]}
+        with patch.object(review, "capture_docker", return_value=(json.dumps(artifact).encode(), b"", None)):
+            _, issue = review.run_notebook({"cells": []})
+        self.assertIn("outside the evaluator gateway policy", issue)
 
     def test_missing_trusted_course_helper_file_is_pending(self):
         artifact = {"cells": [{"outputs": [{"output_type": "error", "ename": "FileNotFoundError",

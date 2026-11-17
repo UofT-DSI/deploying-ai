@@ -12,7 +12,7 @@ MAX_REQUEST_BYTES = 256 * 1024
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_REQUESTS = 20
 ALLOWED_PATHS = {"/v1/chat/completions", "/v1/responses", "/v1/embeddings"}
-ALLOWED_MODELS = {"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "text-embedding-3-small"}
+ALLOWED_MODELS = {"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "gpt-5.4", "text-embedding-3-small"}
 
 
 @contextmanager
