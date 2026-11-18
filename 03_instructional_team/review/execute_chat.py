@@ -1,6 +1,6 @@
 """Run and probe a submitted chat project inside the review container."""
 
-import importlib.util
+import importlib
 import inspect
 import json
 import os
@@ -22,12 +22,30 @@ def startup_file() -> Path | None:
     readme = next((PROJECT / name for name in ("readme.md", "README.md") if (PROJECT / name).is_file()), None)
     if readme:
         text = readme.read_text(encoding="utf-8", errors="replace")[:30000]
+        for match in re.finditer(r"\bpython\s+-m\s+assignment_chat(?:\.([\w-]+))?\b", text):
+            candidate = PROJECT / f"{match.group(1) or '__main__'}.py"
+            if candidate.is_file():
+                return candidate
         for match in re.finditer(r"(?:python|uv run python)\s+(?:05_src/assignment_chat/|\./)?([\w-]+\.py)\b", text):
             candidate = PROJECT / match.group(1)
             if candidate.is_file():
                 return candidate
     return next((PROJECT / name for name in ("app.py", "main.py", "__main__.py")
                  if (PROJECT / name).is_file()), None)
+
+
+def launch_command(launch: Path) -> tuple[list[str], Path]:
+    readme = next((PROJECT / name for name in ("readme.md", "README.md") if (PROJECT / name).is_file()), None)
+    documented_module = bool(readme and any(
+        (match.group(1) or "__main__") == launch.stem
+        for match in re.finditer(r"\bpython\s+-m\s+assignment_chat(?:\.([\w-]+))?\b",
+                                 readme.read_text(encoding="utf-8", errors="replace")[:30000])))
+    if documented_module or launch.name == "__main__.py" or re.search(
+            r"^\s*from\s+\.\w+\s+import\b|^\s*from\s+\.\s+import\b",
+            launch.read_text(encoding="utf-8", errors="replace"), re.MULTILINE):
+        module = "assignment_chat" if launch.stem == "__main__" else f"assignment_chat.{launch.stem}"
+        return [sys.executable, "-m", module], PROJECT.parent
+    return [sys.executable, str(launch)], PROJECT
 
 
 def error_text(log: Path) -> str:
@@ -49,13 +67,17 @@ def chat_endpoint(api: dict) -> tuple[str, int] | None:
 
 
 def callable_probe(launch: Path, probes: list[dict]) -> dict | None:
-    spec = importlib.util.spec_from_file_location("submitted_chat_app", launch)
-    if not spec or not spec.loader:
-        return None
+    command, _ = launch_command(launch)
     sys.path.insert(0, str(PROJECT.parent))
     try:
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        if "-m" in command:
+            module = importlib.import_module(f"assignment_chat.{launch.stem}")
+        else:
+            spec = importlib.util.spec_from_file_location("submitted_chat_app", launch)
+            if not spec or not spec.loader:
+                return None
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
     except Exception:  # noqa: BLE001
         return None
     function = next((value for name in ("assignment_chat", "chat", "respond", "reply")
@@ -97,7 +119,8 @@ def main() -> None:
     env["GRADIO_SERVER_NAME"] = "127.0.0.1"
     log = Path("/work/app.log")
     with log.open("wb") as handle:
-        app = subprocess.Popen([sys.executable, str(launch)], cwd=PROJECT, env=env,
+        command, cwd = launch_command(launch)
+        app = subprocess.Popen(command, cwd=cwd, env=env,
                                stdout=handle, stderr=subprocess.STDOUT)
     result = {"state": "unavailable", "startup": launch.name, "reason": "App did not expose a reachable Gradio API", "exchanges": []}
     try:

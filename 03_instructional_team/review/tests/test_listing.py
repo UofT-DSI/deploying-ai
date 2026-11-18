@@ -87,6 +87,40 @@ class ListingInputTests(unittest.TestCase):
             self.assertEqual(rows[2]["input_row"], "4")
             self.assertEqual(len(list(Path(tmp).rglob("*.md"))), 3)
 
+    def test_assignment_two_mixed_batch_keeps_separate_drafts(self):
+        from assignment_2_submission import ProjectSnapshot
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = Path(tmp) / "students.csv"
+            csv_path.write_text("name,email,repo_url\n" + "".join(
+                f"{name},{name.lower()}@example.com,https://github.com/{name.lower()}/course/pulls\n"
+                for name in ("Ada", "Bob", "Cara")), encoding="utf-8")
+            pr = {"number": 1, "title": "Assignment 2", "created_at": "2026-11-02T00:00:00Z",
+                  "head": {"ref": "assignment-2"}, "state": "open", "merged_at": None,
+                  "html_url": "https://github.com/example/course/pull/1"}
+            snapshot = ProjectSnapshot("sha", {"app.py": b"chat = gr.ChatInterface(fn)\n"},
+                                       ("05_src/assignment_chat/app.py",), "assignment-2")
+            runtimes = [
+                {"state": "observed", "exchanges": [{"id": "memory_set", "response": "Hello"}]},
+                {"state": "unavailable", "reason": "App exited during startup", "exchanges": []},
+                {"state": "unavailable", "reason": "Runner returned no valid result", "exchanges": []},
+            ]
+            with (patch.object(review, "fetch_prs", side_effect=[[pr], [pr], [pr]]),
+                  patch.object(review, "fetch_project_snapshot", return_value=snapshot),
+                  patch.object(review, "build_image", return_value=None),
+                  patch.object(review, "run_project", side_effect=runtimes),
+                  patch.object(review, "secret_key", return_value=None),
+                  patch.object(review, "course_gateway_key", return_value=None)):
+                self.assertEqual(review.main(["--csv", str(csv_path), "--assignment", "2",
+                                              "--output-dir", tmp]), 0)
+            drafts = sorted(Path(tmp).glob("assignment-2-review-*-student-*.md"))
+            self.assertEqual(len(drafts), 3)
+            contents = [path.read_text(encoding="utf-8") for path in drafts]
+            self.assertIn("Student: Ada", contents[0])
+            self.assertIn("App exited during startup", contents[1])
+            self.assertIn("Runner returned no valid result", contents[2])
+            self.assertTrue(all("at least" in content and "Independent AI" in content for content in contents))
+
     def test_missing_csv_column_is_recorded_as_warning(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "students.csv"

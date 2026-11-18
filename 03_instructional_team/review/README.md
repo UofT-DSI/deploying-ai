@@ -9,6 +9,7 @@ Run this tool from the repository base directory to check Assignment 1 or Assign
 - Access to each supplied student repository
 - Docker Desktop (or a compatible Docker daemon) running for execution
 - A limited `OPENAI_API_KEY` in the facilitator environment or `05_src/.secrets` for either assignment
+- An optional limited `API_GATEWAY_KEY` for Assignment 2 projects that use the course gateway
 
 The tool reads GitHub PR information and the selected Assignment 1 notebook and eligible text files, or Assignment 2 project, from one PR head commit. It does not post to GitHub.
 
@@ -66,21 +67,21 @@ The [Assignment 2 requirements](../../02_activities/assignment_2.md) define acce
 | Project explanation | 5 |
 | Reproducible project | 5 |
 
-The source and probe transcript are bounded evidence. A non-AI pass records objective partial credit. An independent AI pass proposes scores for every element, and a composite pass checks those proposals against the non-AI pass and exact source or probe citations. Invalid citations discard the AI pass. Disagreements and unobserved behavior remain Pending. The draft sums supported points and shows Complete at 60 or above, Incomplete from 25 through 59, and Missing below 25. Pending overrides the overall label while the numeric classification remains visible. Every proposed score and its evidence appears in the editable report. The facilitator resolves uncertainty and confirms the final grade.
+The source and probe transcript are bounded evidence. A non-AI pass records objective partial credit and cites candidate implementation in submitted files. An independent AI pass proposes scores for every element, and a composite pass checks those proposals against the non-AI pass and exact source or probe citations. Invalid citations discard that AI pass, and the report names the failed pass and safe reason. Disagreements and unobserved behavior remain Pending. When any element is unassessed, the draft shows supported points as an **at least** lower bound, labels the overall assessment Pending, and omits the score-based classification. An unassessed zero is not a verified failure. A fully assessed draft shows the provisional Complete (60 or above), Incomplete (25–59), or Missing (below 25) classification. The facilitator checks each pending element using its listed next check, separates those checks from student-facing improvement feedback, and confirms the final grade.
 
-An unavailable outside API, absent startup instructions, Docker failure, or unsupported chat boundary does not prove a student failure. Source evidence can still receive partial credit; the report lists the runtime checks to perform manually. A later student in the CSV is assessed even if an earlier submission fails. The expected `assignment-2` branch and changed paths are shown outside the 100-point rubric. The reviewer never posts feedback or a grade.
+An unavailable outside API, absent startup instructions, Docker failure, or unsupported chat boundary does not prove a student failure. Source evidence can still receive partial credit; the report lists the runtime checks to perform manually. Package-style projects with relative imports start as modules, while plain scripts start as files. The container receives a short-lived OpenAI gateway token and, when configured, the limited course gateway key. The raw facilitator OpenAI key stays on the host. A later student in the CSV is assessed even if an earlier submission fails. The expected `assignment-2` branch and changed paths are shown outside the 100-point rubric. The reviewer never posts feedback or a grade.
 
 ### Assignment 2 module interface
 
 | Function | Parameters | Returns |
 | --- | --- | --- |
 | `fetch_project_snapshot(repo, pr, api)` | `repo`: owner/name; `pr`: selected PR; `api`: GitHub API callback | `ProjectSnapshot(sha, files, changed_paths, branch)`; raises `ProjectMissing` or `ProjectUnavailable`. |
-| `source_evidence(snapshot, key)` | `snapshot`: selected project; `key`: facilitator OpenAI key or `None` | Bounded file and line evidence. |
-| `run_project(snapshot, probes, key, image, capture, remove)` | `snapshot`: selected project; `probes`: chat messages; `key`: host key; `image`: course image; `capture` and `remove`: container callbacks | Runtime state and observed exchanges. |
+| `source_evidence(snapshot, key, gateway_key=None)` | `snapshot`: selected project; `key`: facilitator OpenAI key or `None`; `gateway_key`: limited course key | Bounded file and line evidence. |
+| `run_project(snapshot, probes, key, image, capture, remove, gateway_key=None)` | `snapshot`: selected project; `probes`: chat messages; `key`: host key; `image`: course image; `capture` and `remove`: container callbacks; `gateway_key`: limited course key | Runtime state and observed exchanges. |
 | `mechanical_pass(entries, runtime)` | `entries`: source and runtime evidence; `runtime`: runner result | Objective partial scores for all 13 elements. |
 | `ai_pass(entries, key, *, first=None, baseline=None, client=None)` | `entries`: evidence; `key`: host key; `first`: independent pass for composite review; `baseline`: non-AI pass; `client`: optional API client | Citation-validated scores or an unavailable reason. |
 | `reconcile(first, second, runtime, baseline=None)` | `first`: independent pass; `second`: composite pass; `runtime`: runner result; `baseline`: non-AI pass | Proposed points and Pending flags for all elements. |
-| `report(snapshot, runtime, scores, issue, student, pr_url, key, first=None, second=None, baseline=None)` | Submission, review, student, and credential-redaction inputs | Private Markdown draft text. |
+| `report(snapshot, runtime, scores, issue, student, pr_url, key, first=None, second=None, baseline=None, pass_issues=None, gateway_key=None)` | Submission, review, student, pass outcomes, and credential-redaction inputs | Private Markdown draft text. |
 
 This example runs the objective pass without a student app or API call:
 

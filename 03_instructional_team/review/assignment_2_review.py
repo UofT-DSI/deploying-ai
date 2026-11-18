@@ -38,6 +38,36 @@ REQUIRED_PROBES = {
     "restricted": ("restricted_cat", "restricted_zodiac", "restricted_artist"),
 }
 MAX_EVIDENCE = 60000
+SOURCE_PATTERNS = {
+    "api_service": r"\b(?:requests|httpx)\.(?:get|post|request)\s*\(|\burllib\.request\b",
+    "api_transform": r"\b(?:response|result|data)\.json\s*\(|\bjson\.loads\s*\(",
+    "semantic_query": r"\b(?:similarity_search|semantic_search|query_embeddings|query_texts)\s*\(",
+    "semantic_data": r"\b(?:PersistentClient|create_collection|get_or_create_collection|add_documents)\s*\(",
+    "third_tool": r"\b(?:web_search|MCPServer|function_call|tool_choice)\b|\btools\s*=",
+    "third_behavior": r"\b(?:web_search|MCPServer|function_call|tool_choice)\b|\btools\s*=",
+    "chat_ui": r"\b(?:ChatInterface|Chatbot|gr\.Blocks)\s*\(",
+    "personality": r"\b(?:system_prompt|instructions|persona)\s*=",
+    "memory": r"\b(?:history|chat_history|session_state)\b",
+    "prompt_protection": r"\b(?:system_prompt|instructions)\b",
+    "restricted": r"\b(?:cats?|dogs?|horoscopes?|zodiac|taylor swift)\b",
+    "explanation": r"\b(?:API|semantic|service|chat|embedding)\b",
+    "reproducible": r"\b(?:requirements|dependencies|uv run|python)\b",
+}
+NEXT_CHECKS = {
+    "api_service": "Run an API-service question and confirm the response uses live API data.",
+    "api_transform": "Compare the API result with the chat reply to confirm it is transformed.",
+    "semantic_query": "Ask a question about the selected data and inspect the retrieval result.",
+    "semantic_data": "Inspect the submitted data and rebuild or open its search index.",
+    "third_tool": "Trace a third-service question through the tool call.",
+    "third_behavior": "Run a third-service task and verify its result.",
+    "chat_ui": "Launch the interface and send a chat message.",
+    "personality": "Read several replies and check for a consistent role or style.",
+    "memory": "Ask a follow-up that requires an earlier turn.",
+    "prompt_protection": "Try both prompt-reveal and prompt-change probes.",
+    "restricted": "Probe all three restricted topics, including paraphrases.",
+    "explanation": "Read the README for service, design, and data-setup explanations.",
+    "reproducible": "Start the submitted project in the course environment.",
+}
 
 
 @dataclass(frozen=True)
@@ -59,29 +89,35 @@ def secret_key() -> str | None:
     return os.environ.get("OPENAI_API_KEY") or dotenv_values(Path("05_src/.secrets")).get("OPENAI_API_KEY")
 
 
-def redact(value: str, key: str | None) -> str:
-    return value.replace(key, "[REDACTED]") if key else value
+def redact(value: str, key: str | None, gateway_key: str | None = None) -> str:
+    for secret in (key, gateway_key):
+        if secret:
+            value = value.replace(secret, "[REDACTED]")
+    return value
 
 
-def source_evidence(snapshot: ProjectSnapshot, key: str | None) -> tuple[Evidence, ...]:
+def source_evidence(snapshot: ProjectSnapshot, key: str | None, gateway_key: str | None = None) -> tuple[Evidence, ...]:
     manifest = "\n".join(f"{path} ({len(raw)} bytes)" for path, raw in sorted(snapshot.files.items()))
     entries = [Evidence("source:manifest", manifest[:12000])]
     remaining = MAX_EVIDENCE - len(entries[0].text)
     files = sorted(snapshot.files.items(), key=lambda item: (Path(item[0]).name.lower() != "readme.md", item[0]))
+    blocks = []
     for path, raw in files:
         if not path.lower().endswith((".py", ".md", ".toml")):
             continue
-        if len(raw) > 30000:
-            continue
-        content = redact(raw.decode("utf-8", "replace"), key)
+        content = redact(raw.decode("utf-8", "replace"), key, gateway_key)
         lines = content.splitlines()
         for start in range(0, len(lines), 80):
             block = "\n".join(f"{i + 1}: {line}" for i, line in enumerate(lines[start:start + 80], start))
-            if not block or remaining <= 0:
-                break
-            block = block[:min(6000, remaining)]
-            entries.append(Evidence(f"source:{path}:{start + 1}", block))
-            remaining -= len(block)
+            if block:
+                relevance = sum(bool(re.search(pattern, block, re.IGNORECASE)) for pattern in SOURCE_PATTERNS.values())
+                blocks.append((relevance, path, start, block[:6000]))
+    for _, path, start, block in sorted(blocks, key=lambda item: (-item[0], item[2], item[1])):
+        if remaining <= 0:
+            break
+        excerpt = block[:remaining]
+        entries.append(Evidence(f"source:{path}:{start + 1}", excerpt))
+        remaining -= len(excerpt)
     return tuple(entries)
 
 
@@ -119,7 +155,7 @@ def service_probes(entries: tuple[Evidence, ...], key: str | None, client=None) 
 
 
 def run_project(snapshot: ProjectSnapshot, probes: list[dict[str, str]], key: str | None,
-                image: str, capture, remove) -> dict:
+                image: str, capture, remove, gateway_key: str | None = None) -> dict:
     name = "assignment-chat-" + uuid.uuid4().hex[:12]
     token = None
     with tempfile.TemporaryDirectory(prefix="assignment-chat-") as tmp:
@@ -138,6 +174,8 @@ def run_project(snapshot: ProjectSnapshot, probes: list[dict[str, str]], key: st
             if gateway:
                 port, token = gateway
                 command.extend(("--env", f"OPENAI_API_KEY={token}", "--env", f"OPENAI_BASE_URL=http://host.docker.internal:{port}/v1"))
+            if gateway_key:
+                command.extend(("--env", f"API_GATEWAY_KEY={gateway_key}"))
             command.extend((image, "python", "/course/execute_chat.py"))
             try:
                 raw, stderr, issue = capture(command, name, timeout=240)
@@ -146,13 +184,19 @@ def run_project(snapshot: ProjectSnapshot, probes: list[dict[str, str]], key: st
             finally:
                 remove(name)
     if issue:
-        return {"state": "unavailable", "reason": issue.replace("Notebook execution", "Chat app execution"), "exchanges": []}
+        reason = redact(issue.replace("Notebook execution", "Chat app execution"), key, gateway_key)
+        if token:
+            reason = reason.replace(token, "[REDACTED]")
+        return {"state": "unavailable", "reason": reason, "exchanges": []}
     if token:
         raw = raw.replace(token.encode(), b"[REDACTED]") if raw else raw
         stderr = stderr.replace(token.encode(), b"[REDACTED]")
     if key:
         raw = raw.replace(key.encode(), b"[REDACTED]") if raw else raw
         stderr = stderr.replace(key.encode(), b"[REDACTED]")
+    if gateway_key:
+        raw = raw.replace(gateway_key.encode(), b"[REDACTED]") if raw else raw
+        stderr = stderr.replace(gateway_key.encode(), b"[REDACTED]")
     try:
         result = json.loads(raw)
         if not isinstance(result, dict) or result.get("state") not in ("observed", "unavailable") or not isinstance(result.get("exchanges"), list):
@@ -163,14 +207,14 @@ def run_project(snapshot: ProjectSnapshot, probes: list[dict[str, str]], key: st
         return {"state": "unavailable", "reason": "Runner returned no valid result: " + detail, "exchanges": []}
 
 
-def runtime_evidence(result: dict, key: str | None) -> tuple[Evidence, ...]:
-    entries = [Evidence("runtime:status", redact(str(result.get("reason") or result.get("state")), key)[:800])]
+def runtime_evidence(result: dict, key: str | None, gateway_key: str | None = None) -> tuple[Evidence, ...]:
+    entries = [Evidence("runtime:status", redact(str(result.get("reason") or result.get("state")), key, gateway_key)[:800])]
     for item in result.get("exchanges", [])[:12]:
         if not isinstance(item, dict):
             continue
         probe_id = re.sub(r"[^a-zA-Z0-9_]", "", str(item.get("id", "")))[:40]
         content = json.dumps({k: str(item[k])[:3000] for k in ("message", "response", "error") if k in item}, ensure_ascii=False)
-        entries.append(Evidence(f"probe:{probe_id}", redact(content, key)))
+        entries.append(Evidence(f"probe:{probe_id}", redact(content, key, gateway_key)))
     return tuple(entries)
 
 
@@ -179,27 +223,39 @@ def mechanical_pass(entries: tuple[Evidence, ...], runtime: dict) -> tuple[Score
     scores = []
     for id_, _, _, _ in RUBRIC:
         points = 0
-        reason = "Facilitator should assess the submitted source and observed behavior."
+        reason = "No reviewable source excerpt identified for this element."
         citations = ()
+        candidate = next(((entry.id, line) for entry in entries if entry.id.startswith("source:")
+                          and entry.id != "source:manifest" for line in entry.text.splitlines()
+                          if not re.match(r"^\d+:\s*#", line) and
+                          re.search(SOURCE_PATTERNS[id_], line, re.IGNORECASE)), None)
+        if candidate:
+            citations = (candidate,)
+            reason = "Submitted source contains a candidate implementation; behavior remains unverified."
         if id_ == "explanation":
             readme = next(((key, text) for key, text in by_id.items() if re.search(r"source:(?:readme|README)\.md:1$", key)), None)
             if readme:
                 points, reason = 1, "A project README is present; its explanation still needs assessment."
                 citations = ((readme[0], readme[1].splitlines()[0]),)
         elif id_ == "chat_ui":
-            ui = next(((key, text) for key, text in by_id.items() if "ChatInterface(" in text or "gr.Blocks(" in text), None)
+            ui = next(((key, text) for key, text in by_id.items() if key.startswith("source:")
+                       and ".py:" in key and ("ChatInterface(" in text or "gr.Blocks(" in text)), None)
             if ui:
                 line = next(line for line in ui[1].splitlines() if "ChatInterface(" in line or "gr.Blocks(" in line)
                 points, reason, citations = 2, "A chat UI is defined in source; runtime remains to be checked.", ((ui[0], line),)
+        elif id_ in ("api_service", "semantic_query", "third_tool") and candidate and ".py:" in candidate[0]:
+            points = min(2, IMPLEMENTATION_CAPS[id_])
+            reason = "Submitted source contains a relevant service call; integration and behavior remain unverified."
         elif id_ == "semantic_data":
-            chroma = next(((key, text) for key, text in by_id.items() if "PersistentClient(" in text), None)
+            chroma = next(((key, text) for key, text in by_id.items() if ".py:" in key
+                           and "PersistentClient(" in text), None)
             if chroma and "index/" in by_id["source:manifest"]:
                 line = next(line for line in chroma[1].splitlines() if "PersistentClient(" in line)
                 points, reason = 2, "Source creates a persistent Chroma client and committed index files exist."
                 citations = ((chroma[0], line), ("source:manifest", "index/"))
         elif id_ == "reproducible" and runtime.get("state") == "observed":
             points, reason, citations = 2, "The app exposed a chat endpoint in the course container.", (("runtime:status", by_id["runtime:status"]),)
-        scores.append(Score(id_, points, reason, citations, True))
+        scores.append(Score(id_, points, f"{reason} Next check: {NEXT_CHECKS[id_]}", citations, True))
     return tuple(scores)
 
 
@@ -266,10 +322,12 @@ def ai_pass(entries: tuple[Evidence, ...], key: str | None, *, first: tuple[Scor
             text={"format": {"type": "json_schema", "name": "assignment_2_scores", "strict": True, "schema": _schema()}},
             store=False, max_output_tokens=7000)
         if getattr(response, "status", None) != "completed":
-            return None, "AI review did not complete"
+            return None, f"Incomplete model response ({str(getattr(response, 'status', 'unknown'))[:40]})"
         return _validate(json.loads(response.output_text), entries), None
     except (OpenAIError, OSError, ValueError, KeyError, TypeError) as exc:
-        return None, f"AI review unavailable: {type(exc).__name__}: {str(exc)[:120]}"
+        category = "Invalid review output" if isinstance(exc, (ValueError, KeyError, TypeError)) else "AI service unavailable"
+        return None, redact(f"{category}: {type(exc).__name__}: {str(exc)[:120]}", key,
+                            os.environ.get("API_GATEWAY_KEY"))
 
 
 def reconcile(first: tuple[Score, ...] | None, second: tuple[Score, ...] | None,
@@ -294,6 +352,8 @@ def reconcile(first: tuple[Score, ...] | None, second: tuple[Score, ...] | None,
         if blocked and score.id in IMPLEMENTATION_CAPS and points > IMPLEMENTATION_CAPS[score.id]:
             points = IMPLEMENTATION_CAPS[score.id]
             reason += " Unobserved behavior limits this to implementation credit."
+        if pending and "Next check:" not in reason:
+            reason += f" Next check: {NEXT_CHECKS[score.id]}"
         scores.append(Score(score.id, points, reason, score.citations, pending))
     return tuple(scores)
 
@@ -307,9 +367,10 @@ def label(points: int, pending: bool) -> str:
 def report(snapshot: ProjectSnapshot | None, runtime: dict | None, scores: tuple[Score, ...] | None,
            issue: str | None, student: str, pr_url: str, key: str | None,
            first: tuple[Score, ...] | None = None, second: tuple[Score, ...] | None = None,
-           baseline: tuple[Score, ...] | None = None) -> str:
+           baseline: tuple[Score, ...] | None = None, pass_issues: dict[str, str] | None = None,
+           gateway_key: str | None = None) -> str:
     def clean(value: object) -> str:
-        return (redact(str(value or ""), key).replace("<", "&lt;").replace(">", "&gt;")
+        return (redact(str(value or ""), key, gateway_key).replace("<", "&lt;").replace(">", "&gt;")
                 .replace("|", "\\|").replace("\r", " ").replace("\n", " ")[:1000])
 
     lines = ["# Assignment 2 — Draft assessment", "", f"- Student: {clean(student)}", f"- PR: {clean(pr_url)}",
@@ -320,10 +381,13 @@ def report(snapshot: ProjectSnapshot | None, runtime: dict | None, scores: tuple
         return "\n".join(lines)
     total = sum(score.points for score in scores)
     pending = any(score.pending for score in scores)
-    lines.extend([f"## Overall: {label(total, pending)} (draft)", "", f"Proposed score: {total} / 100.",
-                  f"Provisional score-based classification: {label(total, False)}.",
+    lines.extend([f"## Overall: {label(total, pending)} (draft)", "",
+                  (f"Supported points: at least {total} / 100." if pending else f"Proposed score: {total} / 100."),
                   "Facilitator confirmation is required before a final grade.", "",
                   "## Rubric", "", "| Element | Score | Evidence and feedback |", "| --- | ---: | --- |"])
+    if not pending:
+        lines.insert(lines.index("Facilitator confirmation is required before a final grade."),
+                     f"Provisional score-based classification: {label(total, False)}.")
     by_id = {item.id: item for item in scores}
     for id_, name, cap, _ in RUBRIC:
         score = by_id[id_]
@@ -331,7 +395,8 @@ def report(snapshot: ProjectSnapshot | None, runtime: dict | None, scores: tuple
         detail = clean(score.reason) + (f" Evidence: {citations}." if citations else "")
         if score.pending:
             detail += " Behavior or judgment requires facilitator review."
-        lines.append(f"| {name} | {score.points} / {cap}{' (Pending)' if score.pending else ''} | {detail} |")
+        display = f"{score.points} / {cap}" if not score.pending else f"at least {score.points} / {cap} (Unassessed)"
+        lines.append(f"| {name} | {display} | {detail} |")
     lines.extend(["", "## Encouraging observations", ""])
     strengths = [score for score in scores if score.points > 0 and score.citations]
     if strengths:
@@ -356,6 +421,10 @@ def report(snapshot: ProjectSnapshot | None, runtime: dict | None, scores: tuple
             lines.append(f"- {next(name for id_, name, _, _ in RUBRIC if id_ == score.id)}: {clean(score.reason)}")
     if not pending:
         lines.append("- Confirm the cited source and behavior before recording the grade.")
+    if issue or pass_issues:
+        lines.extend(["", "## Review pass outcomes", ""])
+        for name, detail in (pass_issues or {"AI review": issue or ""}).items():
+            lines.append(f"- {clean(name)}: {clean(detail)}")
     lines.extend(["", "## Submission format (outside points)", "",
                   f"- Branch: {clean(snapshot.branch) if snapshot else 'Unavailable'}",
                   "- Changed files: " + (", ".join(clean(path) for path in snapshot.changed_paths) if snapshot else "Unavailable"),
