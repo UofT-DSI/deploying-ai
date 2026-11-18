@@ -727,6 +727,7 @@ def main(argv: list[str] | None = None) -> int:
         items = updated_items
     if assignments == (2,):
         key = secret_key()
+        gateway_key = course_gateway_key()
         setup_checked = False
         setup_issue = None
         updated_items = []
@@ -738,10 +739,11 @@ def main(argv: list[str] | None = None) -> int:
             second = None
             baseline = None
             issue = None
+            pass_issues = {}
             if result.kind == "submitted":
                 try:
                     snapshot = fetch_project_snapshot(student.repo, result.primary, github_api)
-                    source = source_evidence(snapshot, key)
+                    source = source_evidence(snapshot, key, gateway_key)
                     probes = default_probes() + service_probes(source, key)
                     if not setup_checked:
                         setup_issue = build_image()
@@ -750,15 +752,20 @@ def main(argv: list[str] | None = None) -> int:
                         runtime = {"state": "unavailable", "reason": setup_issue, "exchanges": []}
                     else:
                         try:
-                            runtime = run_project(snapshot, probes, key, course_image_name(), capture_docker, remove_container)
+                            runtime = run_project(snapshot, probes, key, course_image_name(), capture_docker,
+                                                  remove_container, gateway_key=gateway_key)
                         except OSError as exc:
                             detail = str(exc).replace(key, "[REDACTED]") if key else str(exc)
                             runtime = {"state": "unavailable", "reason": "Project launch unavailable: " + detail,
                                        "exchanges": []}
-                    evidence = source + runtime_evidence(runtime, key)
+                    evidence = source + runtime_evidence(runtime, key, gateway_key)
                     baseline = mechanical_pass(evidence, runtime)
                     first, first_issue = assignment_2_ai_pass(evidence, key)
                     second, second_issue = assignment_2_ai_pass(evidence, key, first=first, baseline=baseline) if first else (None, first_issue)
+                    if first_issue:
+                        pass_issues["Independent AI"] = first_issue
+                    if second_issue and first:
+                        pass_issues["Composite AI"] = second_issue
                     scores = assignment_2_reconcile(first, second, runtime, baseline)
                     issue = second_issue or first_issue
                 except ProjectMissing as exc:
@@ -766,7 +773,7 @@ def main(argv: list[str] | None = None) -> int:
                 except (ProjectUnavailable, LookupFailure) as exc:
                     result = Result("unverifiable", result.primary, result.state, str(exc))
             updated_items.append((student, assignment, result))
-            assessments.append((student, result, snapshot, runtime, scores, issue, first, second, baseline))
+            assessments.append((student, result, snapshot, runtime, scores, issue, first, second, baseline, pass_issues))
         items = updated_items
     try:
         path = write_report(items, output_dir)
@@ -775,9 +782,10 @@ def main(argv: list[str] | None = None) -> int:
                 write_assignment_report(path.with_name(f"{path.stem}-student-{index}.md"), student, result,
                                         snapshot, criteria, execution_note, substitutions, second_pass, key, gateway_key)
         if assignments == (2,):
-            for index, (student, result, snapshot, runtime, scores, issue, first, second, baseline) in enumerate(assessments, 1):
+            for index, (student, result, snapshot, runtime, scores, issue, first, second, baseline, pass_issues) in enumerate(assessments, 1):
                 content = assignment_2_report(snapshot, runtime, scores, issue or result.reason, student.name,
-                                              (result.primary or {}).get("html_url", ""), key, first, second, baseline)
+                                              (result.primary or {}).get("html_url", ""), key, first, second, baseline,
+                                              pass_issues, gateway_key)
                 path.with_name(f"{path.stem}-student-{index}.md").write_text(content, encoding="utf-8")
     except OSError as exc:
         print(f"Could not write reports: {exc}")

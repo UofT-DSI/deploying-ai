@@ -120,6 +120,81 @@ class Assignment2ReviewTests(unittest.TestCase):
         self.assertFalse(client.responses.kwargs["store"])
         self.assertTrue(client.responses.kwargs["text"]["format"]["strict"])
 
+    def test_incomplete_and_invalid_passes_are_named_in_pending_report(self):
+        entries = (review.Evidence("source:app.py:1", "1: api.get(url)"),)
+        class Responses:
+            def __init__(self, status, output):
+                self.status, self.output = status, output
+
+            def create(self, **kwargs):
+                return type("Response", (), {"status": self.status, "output_text": self.output})()
+
+        incomplete = type("Client", (), {"responses": Responses("incomplete", "")})()
+        _, reason = review.ai_pass(entries, None, client=incomplete)
+        self.assertIn("Incomplete model response", reason)
+        invalid = type("Client", (), {"responses": Responses("completed", '{"scores":[]}')})()
+        _, invalid_reason = review.ai_pass(entries, None, client=invalid)
+        self.assertIn("Invalid review output", invalid_reason)
+        baseline = review.mechanical_pass(entries + (review.Evidence("runtime:status", "Docker unavailable"),),
+                                          {"state": "unavailable", "exchanges": []})
+        text = review.report(None, {"state": "unavailable", "reason": "Docker unavailable", "exchanges": []},
+                             baseline, invalid_reason, "Ada", "https://example.test/pull/1", None,
+                             pass_issues={"Independent AI": invalid_reason})
+        self.assertIn("at least 0 / 100", text)
+        self.assertIn("Independent AI: Invalid review output", text)
+        self.assertNotIn("Provisional score-based classification", text)
+        self.assertNotIn("Missing", text)
+
+    def test_fallback_cites_three_service_modules_and_next_checks(self):
+        snapshot = review.ProjectSnapshot("sha", {
+            "api.py": b"answer = requests.get(url)\n",
+            "search.py": b"matches = store.similarity_search(question)\n",
+            "third.py": b"result = client.web_search(query)\n",
+        }, (), "assignment-2")
+        runtime = {"state": "unavailable", "reason": "Course dependency unavailable", "exchanges": []}
+        evidence = review.source_evidence(snapshot, None) + review.runtime_evidence(runtime, None)
+        scores = {item.id: item for item in review.mechanical_pass(evidence, runtime)}
+        for id_, path in (("api_service", "api.py"), ("semantic_query", "search.py"),
+                          ("third_tool", "third.py")):
+            self.assertGreater(scores[id_].points, 0)
+            self.assertIn(path, scores[id_].citations[0][0])
+            self.assertIn("Next check:", scores[id_].reason)
+            self.assertTrue(scores[id_].pending)
+
+    def test_readme_example_is_not_service_implementation_credit(self):
+        snapshot = review.ProjectSnapshot("sha", {
+            "readme.md": b"Example: requests.get(url) and gr.ChatInterface(fn)\n",
+        }, (), "assignment-2")
+        runtime = {"state": "unavailable", "reason": "No app", "exchanges": []}
+        evidence = review.source_evidence(snapshot, None) + review.runtime_evidence(runtime, None)
+        scores = {item.id: item for item in review.mechanical_pass(evidence, runtime)}
+        self.assertEqual(scores["api_service"].points, 0)
+        self.assertEqual(scores["chat_ui"].points, 0)
+
+    def test_gateway_secret_is_redacted_from_runner_and_report(self):
+        snapshot = review.ProjectSnapshot("sha", {"app.py": b"print('hello')"}, (), "assignment-2")
+        commands = []
+
+        def capture(command, name, timeout):
+            commands.append(command)
+            return b'{"state":"unavailable","reason":"limited-secret","exchanges":[]}', b"", None
+
+        from contextlib import contextmanager
+        @contextmanager
+        def gateway(key):
+            yield 1234, "short-token"
+
+        with patch.object(review, "notebook_gateway", gateway):
+            result = review.run_project(snapshot, [], "host-secret", "image", capture, lambda name: None,
+                                        gateway_key="limited-secret")
+        self.assertIn("API_GATEWAY_KEY=limited-secret", commands[0])
+        self.assertNotIn("host-secret", commands[0])
+        self.assertEqual(result["reason"], "[REDACTED]")
+        text = review.report(snapshot, result, review.mechanical_pass(review.runtime_evidence(result, None), result),
+                             "host-secret limited-secret", "Ada", "url", "host-secret", gateway_key="limited-secret")
+        self.assertNotIn("host-secret", text)
+        self.assertNotIn("limited-secret", text)
+
 
 if __name__ == "__main__":
     unittest.main()
