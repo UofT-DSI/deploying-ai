@@ -67,6 +67,7 @@ class Part:
     earned: float
     evidence: str
     pending: bool = False
+    pending_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,7 @@ class Criterion:
 def grade_label(points: float, pending: bool = False) -> str:
     if pending:
         return "Pending"
-    if points >= 65:
+    if points >= 60:
         return "Complete"
     if points >= 25:
         return "Incomplete"
@@ -148,11 +149,95 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
     tone = generated_field("Tone")
     output_tokens = generated_field("OutputTokens")
 
+    def printed_completion_bound() -> tuple[int, int] | None:
+        if not outputs:
+            return None
+        origins: dict[str, int] = {}
+        generation_origin = None
+        summary_cell = None
+        next_origin = 0
+        for cell_number, source in code:
+            if cell_number >= enhancement_start:
+                break
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                if summary_cell is not None:
+                    return None
+                continue
+            usage_names = set()
+            for statement in tree.body:
+                if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                    continue
+                value = statement.value
+                if value is None:
+                    continue
+                targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+                names = [target.id for target in targets if isinstance(target, ast.Name)]
+                if not names:
+                    continue
+                model_call = isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and (
+                    value.func.attr in ("create", "parse") and any(
+                        isinstance(node, ast.Attribute) and node.attr in ("responses", "completions")
+                        for node in ast.walk(value.func)))
+                if model_call:
+                    next_origin += 1
+                    origin = next_origin
+                else:
+                    referenced = {origins[node.id] for node in ast.walk(value)
+                                  if isinstance(node, ast.Name) and node.id in origins}
+                    origin = next(iter(referenced)) if len(referenced) == 1 else None
+                for name in names:
+                    if origin is None:
+                        origins.pop(name, None)
+                    else:
+                        origins[name] = origin
+                if (isinstance(value, ast.Attribute) and value.attr in ("completion_tokens", "output_tokens")
+                        and isinstance(value.value, ast.Attribute) and value.value.attr == "usage"
+                        and isinstance(value.value.value, ast.Name)
+                        and origins.get(value.value.value.id) == generation_origin):
+                    usage_names.update(names)
+            printed = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                       and isinstance(node.func, ast.Name) and node.func.id in ("print", "display")]
+            if generation_origin is None and any(i == cell_number and value.strip() for i, value in outputs):
+                for call in printed:
+                    if not any(isinstance(node, ast.Attribute) and node.attr == "summary"
+                               for node in ast.walk(call)):
+                        continue
+                    used = {origins[node.id] for node in ast.walk(call)
+                            if isinstance(node, ast.Name) and node.id in origins}
+                    if len(used) == 1:
+                        generation_origin = used.pop()
+                        summary_cell = cell_number
+                        break
+            if summary_cell is not None and generation_origin is not None and usage_names:
+                usage_printed = any(
+                    usage_names.intersection(node.id for node in ast.walk(call) if isinstance(node, ast.Name))
+                    and any(isinstance(node, ast.Constant) and isinstance(node.value, str)
+                            and re.search(r"\bOutput(?:\s+tokens|Tokens)?\s*:", node.value, re.IGNORECASE)
+                            for node in ast.walk(call))
+                    for call in printed)
+                if not usage_printed:
+                    continue
+                values = [int(match.group(1)) for output_cell, value in outputs if output_cell == cell_number
+                          for match in re.finditer(r"\b(?:OutputTokens|Output\s+tokens|Output)\s*[:=]\s*(\d+)\b",
+                                                   value, re.IGNORECASE)]
+                if len(values) == 1:
+                    return cell_number, values[0]
+        return None
+
     def summary_length() -> Part:
         if summary and output_tokens and output_tokens[1].isdigit() and int(output_tokens[1]) <= 1000:
             return Part("Summary at most 1,000 tokens", 2, 2, f"{output_tokens[0]} (whole response upper bound)")
+        bound = printed_completion_bound()
+        if bound and bound[1] <= 1000:
+            return Part("Summary at most 1,000 tokens", 2, 2,
+                        f"Output cell {bound[0]}: {bound[1]} completion tokens for the original response (whole response upper bound)")
+        if blocked:
+            return Part("Summary at most 1,000 tokens", 2, 0,
+                        f"Evaluator blocked: {blocked}", True, "blocked")
         return Part("Summary at most 1,000 tokens", 2, 0,
-                    "Summary-specific model token count unavailable; facilitator checks length", True)
+                    "Summary-specific model token count unavailable; facilitator checks length", True, "inconclusive")
 
     def match(pattern: str, flags: int = re.IGNORECASE) -> str | None:
         for i, source in code:
@@ -311,7 +396,7 @@ def assess(notebook: dict, executed: dict | None = None, blocked: str | None = N
 
     def part(label: str, points: float, evidence: str | None, runtime: bool = False) -> Part:
         if runtime and blocked and (not evidence or not evidence.startswith("Output cell")):
-            return Part(label, points, 0, f"Evaluator blocked: {blocked}", True)
+            return Part(label, points, 0, f"Evaluator blocked: {blocked}", True, "blocked")
         return Part(label, points, points if evidence else 0, evidence or "No supporting evidence in submitted code or output")
 
     selected = next((match(re.escape(source)) for source in ASSIGNED_SOURCES if match(re.escape(source))), None)

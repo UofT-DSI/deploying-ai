@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 script = Path(__file__).resolve().parents[1] / "review.py"
@@ -128,6 +129,81 @@ class RubricTests(unittest.TestCase):
         self.assertEqual(generated.parts[0].earned, 0)
         self.assertEqual(generated.parts[1].earned, 0)
         self.assertEqual(generated.parts[3].earned, 0)
+
+    def test_original_summary_length_uses_its_printed_response_usage(self):
+        notebook = {"cells": [
+            {"cell_type": "code", "source": [
+                ("response = client.chat.completions.parse(model='gpt-4o-mini', messages=[])\n"
+                 "event = response.choices[0].message.parsed")
+            ]},
+            {"cell_type": "code", "source": [
+                ("print(event.summary)\nprint(f'Relevance: {event.relevance}')\n"
+                 "print(f'Summary: {event.summary}')")
+            ]},
+            {"cell_type": "code", "source": [
+                ("output_tokens = response.usage.completion_tokens\n"
+                 "print(f'Output: {output_tokens}')")
+            ]},
+        ]}
+        executed = {"cells": [
+            {"outputs": []},
+            {"outputs": [{"output_type": "stream", "text": "Relevance: professional work\nSummary: A short summary."}]},
+            {"outputs": [{"output_type": "stream", "text": "Output: 253"}]},
+        ]}
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Generated content")
+        self.assertEqual(row.parts[3].earned, 2)
+        self.assertFalse(row.parts[3].pending)
+
+        notebook["cells"][1]["source"] = [
+            "print(event.summary)\nprint(f'Relevance: {event.relevance}')\nprint(f'Tone: {event.tone}')"
+        ]
+        executed["cells"][1]["outputs"][0]["text"] = (
+            "A short summary.\nRelevance: professional work\nTone: Formal"
+        )
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Generated content")
+        self.assertEqual(row.parts[3].earned, 2)
+
+    def test_unrelated_response_usage_cannot_clear_summary_length(self):
+        notebook = {"cells": [
+            {"cell_type": "code", "source": [
+                ("response = client.chat.completions.parse(model='gpt-4o-mini', messages=[])\n"
+                 "event = response.choices[0].message.parsed")
+            ]},
+            {"cell_type": "code", "source": [
+                "print(f'Relevance: {event.relevance}')\nprint(f'Summary: {event.summary}')"
+            ]},
+            {"cell_type": "code", "source": [
+                ("other = client.chat.completions.parse(model='gpt-4o-mini', messages=[])\n"
+                 "output_tokens = other.usage.completion_tokens\nprint(f'Output: {output_tokens}')")
+            ]},
+        ]}
+        executed = {"cells": [
+            {"outputs": []},
+            {"outputs": [{"output_type": "stream", "text": "Relevance: professional work\nSummary: A short summary."}]},
+            {"outputs": [{"output_type": "stream", "text": "Output: 253"}]},
+        ]}
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Generated content")
+        self.assertEqual(row.parts[3].earned, 0)
+        self.assertTrue(row.parts[3].pending)
+        self.assertEqual(row.parts[3].pending_reason, "inconclusive")
+
+        notebook["cells"][2]["source"] = [
+            ("response = client.chat.completions.parse(model='gpt-4o-mini', messages=[])\n"
+             "output_tokens = response.usage.completion_tokens\nprint(f'Output: {output_tokens}')")
+        ]
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Generated content")
+        self.assertTrue(row.parts[3].pending)
+
+        blocked = next(row for row in review.assess(notebook, executed, "Environment: later cell failed")
+                       if row.name == "Generated content")
+        self.assertEqual(blocked.parts[3].pending_reason, "blocked")
+
+        notebook["cells"][2]["source"] = [
+            ("output_tokens = response.usage.completion_tokens\n"
+             "print(output_tokens)\nprint('Output: 253')")
+        ]
+        row = next(row for row in review.assess(notebook, executed) if row.name == "Generated content")
+        self.assertTrue(row.parts[3].pending)
 
     def test_structured_pair_requires_output(self):
         notebook = {"cells": [{"cell_type": "code", "source": [
@@ -269,8 +345,8 @@ class RubricTests(unittest.TestCase):
         self.assertEqual(row.parts[2].earned, 0)
 
     def test_grade_boundaries(self):
-        self.assertEqual([review.grade_label(x) for x in (24, 25, 64, 65)],
-                         ["Missing", "Incomplete", "Incomplete", "Complete"])
+        self.assertEqual([review.grade_label(x) for x in (24, 25, 59.5, 60, 65)],
+                         ["Missing", "Incomplete", "Incomplete", "Complete", "Complete"])
         self.assertEqual(review.grade_label(90, True), "Pending")
 
     def test_each_criterion_has_the_agreed_point_cap(self):
@@ -375,6 +451,12 @@ class RubricTests(unittest.TestCase):
 
 
 class CliReportTests(unittest.TestCase):
+    def setUp(self):
+        judge = patch.object(review, "judge_review", return_value=SimpleNamespace(
+            issue="Judge unavailable in test", judgments=(), model=None))
+        judge.start()
+        self.addCleanup(judge.stop)
+
     def test_substitution_record_does_not_carry_to_next_student(self):
         pr = {"number": 7, "title": "Assignment 1", "head": {"sha": "abc123", "ref": "assignment-1"},
               "state": "open", "html_url": "https://github.com/ada/course/pull/7"}
