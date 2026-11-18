@@ -12,6 +12,11 @@ spec.loader.exec_module(gateway)
 
 
 class GatewayTests(unittest.TestCase):
+    def test_deepeval_default_model_is_permitted(self):
+        from deepeval.models.llms.constants import DEFAULT_GPT_MODEL
+
+        self.assertIn(DEFAULT_GPT_MODEL, gateway.ALLOWED_MODELS)
+
     def test_legacy_max_tokens_is_bounded_without_conflicting_parameter(self):
         seen = []
 

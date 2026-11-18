@@ -89,6 +89,7 @@ class JudgeTests(unittest.TestCase):
         self.assertIsNone(result.issue)
         self.assertEqual(len(result.judgments), len(specs))
         request = client.responses.create.call_args.kwargs
+        self.assertEqual(request["model"], "gpt-6.1-terra")
         self.assertFalse(request["store"])
         self.assertNotIn("earned", str(request))
         self.assertNotIn("first-pass", str(request).lower())
@@ -122,6 +123,7 @@ class CompositeTests(unittest.TestCase):
         self.assertEqual(result.judgments[6].points, 4)
         self.assertTrue(result.judgments[6].review_needed)
         request = client.responses.create.call_args.kwargs
+        self.assertEqual(request["model"], "gpt-6.1-terra")
         self.assertFalse(request["store"])
         sent = json.loads(request["input"])
         self.assertIn("non_ai", sent)

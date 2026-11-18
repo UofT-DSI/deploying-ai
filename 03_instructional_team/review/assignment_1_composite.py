@@ -77,8 +77,9 @@ def _citations(raw: object, bundle: EvidenceBundle) -> tuple[Citation, ...]:
 
 def composite_review(criteria: tuple[Criterion, ...], independent: JudgeReview,
                      bundle: EvidenceBundle, *, client=None, model: str | None = None,
-                     secrets: tuple[str, ...] = (), student_name: str = "") -> CompositeReview:
-    model = model or os.environ.get("ASSIGNMENT_COMPOSITE_MODEL") or independent.model or "gpt-4.1"
+                     secrets: tuple[str, ...] = (), student_name: str = "",
+                     api_key: str | None = None) -> CompositeReview:
+    model = model or os.environ.get("ASSIGNMENT_COMPOSITE_MODEL") or independent.model or "gpt-6.1-terra"
     if independent.issue:
         return CompositeReview(issue=f"Independent AI review unavailable: {independent.issue}", model=model)
     specs = rubric_specs(criteria)
@@ -86,7 +87,7 @@ def composite_review(criteria: tuple[Criterion, ...], independent: JudgeReview,
         return CompositeReview(issue="Independent AI review is incomplete", model=model)
     if client is None:
         try:
-            client = OpenAI(timeout=90.0, max_retries=0)
+            client = OpenAI(api_key=api_key, timeout=90.0, max_retries=0)
         except (OpenAIError, ValueError) as exc:
             return CompositeReview(issue=f"Composite setup unavailable: {type(exc).__name__}", model=model)
     first = []

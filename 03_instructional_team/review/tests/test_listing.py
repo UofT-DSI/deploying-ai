@@ -54,6 +54,8 @@ class ListingInputTests(unittest.TestCase):
         self.assertEqual(row["note"], "HTTP 403")
 
     def test_one_csv_contains_submitted_missing_and_warning_rows(self):
+        from assignment_2_submission import ProjectSnapshot
+
         submitted = {"number": 9, "title": "Assignment 2", "created_at": "2026-11-02T00:00:00Z", "head": {"ref": "assignment-2"}, "state": "closed", "merged_at": None, "html_url": "https://github.com/ada/deploying-ai/pull/9"}
         with tempfile.TemporaryDirectory() as tmp:
             csv_path = Path(tmp) / "students.csv"
@@ -64,7 +66,12 @@ class ListingInputTests(unittest.TestCase):
                 "Cara,,https://github.com/cara/deploying-ai/pulls\n",
                 encoding="utf-8",
             )
-            with patch.object(review, "fetch_prs", side_effect=[[submitted], []]) as fetch:
+            snapshot = ProjectSnapshot(
+                "head-sha", {"app.py": b"print('hello')"}, ("05_src/assignment_chat/app.py",), "assignment-2")
+            with (patch.object(review, "fetch_prs", side_effect=[[submitted], []]) as fetch,
+                  patch.object(review, "fetch_project_snapshot", return_value=snapshot),
+                  patch.object(review, "build_image", return_value="Docker unavailable"),
+                  patch.object(review, "secret_key", return_value=None)):
                 status = review.main(["--csv", str(csv_path), "--assignment", "2", "--output-dir", tmp])
             self.assertEqual(status, 1)
             self.assertEqual(fetch.call_count, 2)
@@ -78,7 +85,7 @@ class ListingInputTests(unittest.TestCase):
             self.assertEqual(rows[0]["pr_url"], submitted["html_url"])
             self.assertEqual(rows[2]["missing_items"], "email")
             self.assertEqual(rows[2]["input_row"], "4")
-            self.assertEqual(list(Path(tmp).rglob("*.md")), [])
+            self.assertEqual(len(list(Path(tmp).rglob("*.md"))), 3)
 
     def test_missing_csv_column_is_recorded_as_warning(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -30,9 +30,21 @@ def main() -> int:
             {"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [],
              "source": ["from pathlib import Path\n",
                         "print('substituted', Path('/Users/ada/Downloads/ai_report_2025.pdf').is_file())"]},
+            {"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [],
+             "source": ["from pathlib import Path\n",
+                        "documents = Path('/course/02_activities/documents')\n",
+                        "(documents / 'created.txt').write_text('generated article')\n",
+                        "print('created', (documents / 'created.txt').read_text())\n",
+                        "print('provided', Path('documents/provided.txt').read_text())\n",
+                        "import os\n",
+                        "from dotenv import load_dotenv\n",
+                        "load_dotenv(Path.cwd().parent / '05_src/.secrets', override=True)\n",
+                        "print('gateway key loaded', bool(os.getenv('API_GATEWAY_KEY')))"]},
         ],
     }
-    executed, issue = review.run_notebook(notebook)
+    executed, issue = review.run_notebook(
+        notebook, text_files={"02_activities/documents/provided.txt": b"committed article"},
+        gateway_key="smoke-course-key")
     if issue:
         print(issue)
         return 1
@@ -55,6 +67,12 @@ def main() -> int:
     records = executed["metadata"]["assignment_review"]["substitutions"]
     if records != [{"cell": 3, "article": "ai_report_2025.pdf"}]:
         print("Notebook substitution record was unexpected:", records)
+        return 1
+    files_output = "".join("".join(item.get("text", "")) if isinstance(item.get("text", ""), list)
+                           else item.get("text", "") for item in executed["cells"][3]["outputs"])
+    if ("created generated article" not in files_output or "provided committed article" not in files_output
+            or "gateway key loaded True" not in files_output):
+        print("Notebook text-file workflow failed:", files_output)
         return 1
     print("Docker notebook smoke test passed")
     return 0

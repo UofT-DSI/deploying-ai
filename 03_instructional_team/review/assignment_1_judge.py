@@ -8,7 +8,7 @@ from assignment_1_evidence import EvidenceBundle
 from assignment_1_rubric import Criterion
 from openai import OpenAI, OpenAIError
 
-DEFAULT_JUDGE_MODEL = "gpt-4.1"
+DEFAULT_JUDGE_MODEL = "gpt-6.1-terra"
 
 
 @dataclass(frozen=True)
@@ -82,11 +82,11 @@ def _response_schema() -> dict:
 
 
 def judge_review(bundle: EvidenceBundle, specs: tuple[PartSpec, ...], *, client=None,
-                 model: str | None = None) -> JudgeReview:
+                 model: str | None = None, api_key: str | None = None) -> JudgeReview:
     model = model or os.environ.get("ASSIGNMENT_JUDGE_MODEL") or DEFAULT_JUDGE_MODEL
     if client is None:
         try:
-            client = OpenAI(timeout=90.0, max_retries=0)
+            client = OpenAI(api_key=api_key, timeout=90.0, max_retries=0)
         except (OpenAIError, ValueError) as exc:
             return JudgeReview(issue=f"Judge setup unavailable: {type(exc).__name__}", model=model)
     payload = {"rubric": [spec.__dict__ for spec in specs],

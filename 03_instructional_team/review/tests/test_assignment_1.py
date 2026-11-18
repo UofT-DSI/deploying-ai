@@ -19,7 +19,8 @@ class SnapshotTests(unittest.TestCase):
         pr = {"number": 7, "head": {"sha": "abc123", "repo": {"full_name": "ada/course"}}}
         encoded = base64.b64encode(b'{"cells":[]}').decode()
         payload = {"content": encoded[:8] + "\n  " + encoded[8:], "encoding": "base64"}
-        with patch.object(review, "github_api", side_effect=[payload, [], pr]):
+        with patch.object(review, "github_api", side_effect=[payload, [], pr]), \
+             patch.object(review, "fetch_text_files", return_value={}):
             self.assertEqual(review.fetch_assignment_snapshot("ada/course", pr).notebook, {"cells": []})
     def test_snapshot_uses_selected_head_and_assigned_path(self):
         pr = {
@@ -29,7 +30,8 @@ class SnapshotTests(unittest.TestCase):
         }
         notebook = {"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}
         payload = {"content": base64.b64encode(json.dumps(notebook).encode()).decode(), "encoding": "base64"}
-        with patch.object(review, "github_api", side_effect=[payload, [{"filename": "02_activities/assignment_1.ipynb"}], pr]) as api:
+        with patch.object(review, "github_api", side_effect=[payload, [{"filename": "02_activities/assignment_1.ipynb"}], pr]) as api, \
+             patch.object(review, "fetch_text_files", return_value={}):
             snapshot = review.fetch_assignment_snapshot("ada/course", pr)
         self.assertEqual(snapshot.notebook, notebook)
         self.assertEqual(snapshot.sha, "abc123")
@@ -41,6 +43,7 @@ class SnapshotTests(unittest.TestCase):
         pr = {"number": 7, "head": {"sha": "abc123", "repo": {"full_name": "ada/course"}}}
         payload = {"content": base64.b64encode(b'{"cells":[]}').decode(), "encoding": "base64"}
         with patch.object(review, "github_api", side_effect=[payload, [], {"head": {"sha": "new123"}}]), \
+             patch.object(review, "fetch_text_files", return_value={"02_activities/source.txt": b"article"}), \
              self.assertRaises(review.LookupFailure):
             review.fetch_assignment_snapshot("ada/course", pr)
 
@@ -66,6 +69,7 @@ class SnapshotTests(unittest.TestCase):
         pr = {"number": 7, "head": {"sha": "abc123", "repo": {"full_name": "ada/course"}}}
         payload = {"content": base64.b64encode(b'{"cells":[]}').decode(), "encoding": "base64"}
         with patch.object(review, "github_api", side_effect=[payload, {"bad": "shape"}, pr]), \
+             patch.object(review, "fetch_text_files", return_value={}), \
              self.assertRaises(review.LookupFailure):
             review.fetch_assignment_snapshot("ada/course", pr)
 
@@ -410,7 +414,8 @@ class RubricTests(unittest.TestCase):
         rows = review.assess({"cells": [{"cell_type": "code", "source": ["from openai import OpenAI\nclient = OpenAI()"]}]}, blocked="unavailable")
         with tempfile.TemporaryDirectory() as tmp, patch.dict(review.os.environ, {"OPENAI_API_KEY": "secret-value"}):
             path = Path(tmp) / "report.md"
-            review.write_assignment_report(path, student, review.Result("submitted", pr, "closed"), snapshot, rows, "secret-value")
+            review.write_assignment_report(path, student, review.Result("submitted", pr, "closed"), snapshot, rows,
+                                           "secret-value and course-key", key="secret-value", gateway_key="course-key")
             report = path.read_text(encoding="utf-8")
         self.assertIn("Pending", report)
         self.assertIn("Pending/", report)
@@ -419,6 +424,7 @@ class RubricTests(unittest.TestCase):
         self.assertIn("## Submission format (outside points)", report)
         self.assertIn("wrong-name", report)
         self.assertNotIn("secret-value", report)
+        self.assertNotIn("course-key", report)
 
     def test_report_records_assigned_pdf_substitution_without_local_path(self):
         student = review.make_student("Ada", "ada@example.com", "https://github.com/ada/course/pulls")

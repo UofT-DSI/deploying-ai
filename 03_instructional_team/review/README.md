@@ -1,16 +1,16 @@
 # Assignment submission reviewer
 
-Run this tool from the repository base directory to check Assignment 1 or Assignment 2 submissions. It writes one CSV report containing every student in the input. Assignment 1 also produces one editable Markdown draft assessment per student. The facilitator confirms or changes the assessment before assigning a final grade. Assignment 2 remains PR discovery only.
+Run this tool from the repository base directory to check Assignment 1 or Assignment 2 submissions. It writes one CSV report containing every student in the input and one editable Markdown draft assessment per student. The facilitator confirms or changes the assessment before assigning a final grade.
 
 ## Runtime requirements
 
 - Python 3.11 or newer
 - [GitHub CLI](https://cli.github.com/) installed and authenticated with `gh auth login`
 - Access to each supplied student repository
-- Docker Desktop (or a compatible Docker daemon) running for Assignment 1 evaluation
-- `OPENAI_API_KEY` in the facilitator environment for Assignment 1 execution, independent AI review, and composite assessment, using a limited course credential
+- Docker Desktop (or a compatible Docker daemon) running for execution
+- A limited `OPENAI_API_KEY` in the facilitator environment or `05_src/.secrets` for either assignment
 
-The tool reads GitHub PR information and the assigned notebook from the selected Assignment 1 PR commit. It does not post to GitHub.
+The tool reads GitHub PR information and the selected Assignment 1 notebook and eligible text files, or Assignment 2 project, from one PR head commit. It does not post to GitHub.
 
 ## Run with student arguments
 
@@ -36,15 +36,66 @@ Then run:
 uv run python 03_instructional_team/review/review.py --csv students.csv --assignment 2
 ```
 
-For Assignment 1 draft assessments, use `--assignment 1` after setting a limited `OPENAI_API_KEY` and starting Docker:
+For Assignment 1 draft assessments, use `--assignment 1` after making a limited `OPENAI_API_KEY` available in the environment or `05_src/.secrets` and starting Docker:
 
 ```powershell
 uv run python 03_instructional_team/review/review.py --csv students.csv --assignment 1
 ```
 
-Use `--output-dir PATH` to choose where reports go. By default, each run creates a new CSV under `03_instructional_team/review/reports`; Assignment 1 Markdown reports sit beside it. The default reports directory is ignored by Git because reports contain student names and email addresses. If you choose another output directory, keep it private.
+Use `--output-dir PATH` to choose where reports go. By default, each run creates a new CSV and student Markdown drafts under `03_instructional_team/review/reports`. The default reports directory is ignored by Git because reports contain student names and email addresses. If you choose another output directory, keep it private.
 
 The CLI prints counts of `submitted`, `not_submitted`, `warning`, and `error` rows followed by the CSV path. It derives the repository from the listing URL, checks open and closed PRs, and selects the newest PR whose title resembles the requested assignment (for example, `Assignment 1`, `Assignment #1`, or `Assignment one done`). If the title does not name an assignment, the assignment branch can identify it. The CSV includes the input row number, student's details, repository, assignment, status, selected PR link, PR state, missing input items, and a note for closed or merged PRs.
+
+## Assignment 2 assessment
+
+The [Assignment 2 requirements](../../02_activities/assignment_2.md) define acceptable implementations. The reviewer fetches a bounded `05_src/assignment_chat` tree from the selected commit, infers a Python startup file from the README or common file names, and starts it in the course container. It probes a reachable Gradio chat endpoint, or a named chat callable when the script exits, with memory, prompt-protection, restricted-topic, and three project-specific service questions. An interface without either boundary or an unclear startup path is marked for facilitator review. The real OpenAI key stays on the host; the container receives a short-lived, limited gateway token. No student-specific third-party credentials are supplied.
+
+| Rubric element | Points |
+| --- | ---: |
+| API-backed service | 10 |
+| API response transformation | 10 |
+| Semantic query behavior | 12 |
+| Semantic data setup | 8 |
+| Third-service tool use | 10 |
+| Third-service behavior | 10 |
+| Chat interface | 5 |
+| Distinct personality | 4 |
+| Conversation memory | 6 |
+| Prompt protection | 7 |
+| Restricted topics | 8 |
+| Project explanation | 5 |
+| Reproducible project | 5 |
+
+The source and probe transcript are bounded evidence. A non-AI pass records objective partial credit. An independent AI pass proposes scores for every element, and a composite pass checks those proposals against the non-AI pass and exact source or probe citations. Invalid citations discard the AI pass. Disagreements and unobserved behavior remain Pending. The draft sums supported points and shows Complete at 60 or above, Incomplete from 25 through 59, and Missing below 25. Pending overrides the overall label while the numeric classification remains visible. Every proposed score and its evidence appears in the editable report. The facilitator resolves uncertainty and confirms the final grade.
+
+An unavailable outside API, absent startup instructions, Docker failure, or unsupported chat boundary does not prove a student failure. Source evidence can still receive partial credit; the report lists the runtime checks to perform manually. A later student in the CSV is assessed even if an earlier submission fails. The expected `assignment-2` branch and changed paths are shown outside the 100-point rubric. The reviewer never posts feedback or a grade.
+
+### Assignment 2 module interface
+
+| Function | Parameters | Returns |
+| --- | --- | --- |
+| `fetch_project_snapshot(repo, pr, api)` | `repo`: owner/name; `pr`: selected PR; `api`: GitHub API callback | `ProjectSnapshot(sha, files, changed_paths, branch)`; raises `ProjectMissing` or `ProjectUnavailable`. |
+| `source_evidence(snapshot, key)` | `snapshot`: selected project; `key`: facilitator OpenAI key or `None` | Bounded file and line evidence. |
+| `run_project(snapshot, probes, key, image, capture, remove)` | `snapshot`: selected project; `probes`: chat messages; `key`: host key; `image`: course image; `capture` and `remove`: container callbacks | Runtime state and observed exchanges. |
+| `mechanical_pass(entries, runtime)` | `entries`: source and runtime evidence; `runtime`: runner result | Objective partial scores for all 13 elements. |
+| `ai_pass(entries, key, *, first=None, baseline=None, client=None)` | `entries`: evidence; `key`: host key; `first`: independent pass for composite review; `baseline`: non-AI pass; `client`: optional API client | Citation-validated scores or an unavailable reason. |
+| `reconcile(first, second, runtime, baseline=None)` | `first`: independent pass; `second`: composite pass; `runtime`: runner result; `baseline`: non-AI pass | Proposed points and Pending flags for all elements. |
+| `report(snapshot, runtime, scores, issue, student, pr_url, key, first=None, second=None, baseline=None)` | Submission, review, student, and credential-redaction inputs | Private Markdown draft text. |
+
+This example runs the objective pass without a student app or API call:
+
+```python
+import sys
+
+sys.path.insert(0, "03_instructional_team/review")
+from assignment_2_review import mechanical_pass, runtime_evidence, source_evidence
+from assignment_2_submission import ProjectSnapshot
+
+snapshot = ProjectSnapshot("example-sha", {"readme.md": b"# Example chat\n", "app.py": b"import gradio as gr\nchat = gr.ChatInterface(lambda message, history: message)\n"}, (), "assignment-2")
+runtime = {"state": "unavailable", "reason": "Example has not been launched", "exchanges": []}
+evidence = source_evidence(snapshot, None) + runtime_evidence(runtime, None)
+print([(item.id, item.points, item.pending) for item in mechanical_pass(evidence, runtime)])
+```
 
 ## Assignment 1 assessment
 
@@ -75,7 +126,7 @@ The expected `assignment-1` branch and a PR changing only `02_activities/assignm
 4. **Reconciliation:** `reconcile` checks citations against the evidence bundle. A composite change from non-AI points, including a deduction to zero, requires a valid citation. If validation fails, the non-AI points remain as a flagged provisional proposal. A Pending runtime part stays Pending when the required output was not observed. Rubric-specific trusted evidence can resolve an inconclusive first-pass check, such as original-response token usage.
 5. **Report:** `write_assignment_report` sums the reconciled rubric points into a proposed score. **Complete** starts at 60, **Incomplete** at 25, and **Missing** is below 25. If any part remains Pending, the overall label is Pending and the report separately shows the provisional classification based on assessed points. The main rubric, learner feedback, and final appendix use the reconciled decisions. The appendix compares Non-AI Review, AI Review, and Composite Review for each subpoint.
 
-AI citations establish where evidence came from; they do not prove that a rubric interpretation is correct. Disagreements and uncertainty stay visible for facilitator review. If an AI request or response is unavailable, the report retains available non-AI points and records the issue. Both AI requests use `store=false`, a strict response schema, and no tools. The default model is `gpt-4.1`; `ASSIGNMENT_JUDGE_MODEL` and `ASSIGNMENT_COMPOSITE_MODEL` override the two passes independently.
+AI citations establish where evidence came from; they do not prove that a rubric interpretation is correct. Disagreements and uncertainty stay visible for facilitator review. If an AI request or response is unavailable, the report retains available non-AI points and records the issue. Both AI requests use `store=false`, a strict response schema, and no tools. The default model for both reviewer passes is `gpt-6.1-terra`; `ASSIGNMENT_JUDGE_MODEL` and `ASSIGNMENT_COMPOSITE_MODEL` override the two passes independently. The facilitator key and optional course gateway key are resolved once per Assignment 1 run, with environment values taking precedence over `05_src/.secrets`.
 
 ### Architecture and trust boundaries
 
@@ -97,11 +148,11 @@ flowchart LR
     Resolve --> Report[review.py: CSV and draft Markdown]
 ```
 
-`review.py` selects the newest matching open or closed PR, fetches the assigned notebook from its head commit, and verifies that the head has not changed while it reads the PR files. For Assignment 1, the first submitted notebook triggers an image build from the course `pyproject.toml` and `uv.lock`. The image contains the trusted runner, `05_src/utils` helpers, and the two assigned course PDFs. `course_workspace.py` prepares the course-like path layout and substitutes an unavailable PDF path only when its filename unambiguously identifies an assigned PDF. Ambiguous references are left for facilitator review; unrelated local files are not repaired.
+`review.py` selects the newest matching open or closed PR, fetches the assigned notebook and bounded `.txt` files from its head commit, and verifies that the head has not changed while it reads the PR files. Secret-like files, unsafe paths, symlinks, and files over the review limits are excluded or reported as unavailable. For Assignment 1, the first submitted notebook triggers an image build from the course `pyproject.toml` and `uv.lock`. The image contains the trusted runner, `05_src/utils` helpers, and the two assigned course PDFs. `course_workspace.py` prepares the course-like path layout and substitutes an unavailable PDF path only when its filename unambiguously identifies an assigned PDF. Ambiguous references are left for facilitator review; unrelated local files are not repaired.
 
 The host never imports student cells. `execute_notebook.py` runs them in a disposable Docker container with a 15-minute wall-clock limit, 4 GiB memory, 2 CPUs, 128 processes, a read-only root filesystem, and bounded writable `/work` and `/tmp` filesystems. The submitted notebook is mounted read-only. Execution output is capped before grading, and malformed output is treated as unavailable evidence. The container has network access for article and API calls.
 
-The real `OPENAI_API_KEY` stays on the host. `api_gateway.py` gives the container a short-lived token and forwards only its allowlisted endpoints and models, with request size and count limits. A model outside that allowlist can produce an execution block; the gateway does not silently substitute a model. Use a limited course credential and review the submissions selected for execution. The host `.secrets` file is never copied into the image or mounted in the container.
+The real `OPENAI_API_KEY` stays on the host. `api_gateway.py` gives the container a short-lived token and forwards only its allowlisted endpoints and models, including the pinned DeepEval default `gpt-5.4`, with request size and count limits. A model outside that allowlist can produce an execution block; the gateway does not silently substitute a model. When available, the course `API_GATEWAY_KEY` is passed into the untrusted notebook container so submissions that use the course gateway can run; use a limited course credential for that purpose. Both keys are redacted from execution notes, AI evidence, and draft reports. The host `.secrets` file is never copied into the image or mounted in the container. Submitted text files enter through a read-only mount and are copied into the disposable workspace. A bounded writable course document area allows notebooks to create text files while preserving the image's trusted PDF originals and the read-only host boundary.
 
 The evidence bundle clips long cells with an explicit omission marker, combines outputs from one cell, redacts known secrets and student identifiers, and enforces a total size limit. Notebook content is evidence, never an instruction to the AI reviewers. The generated reports are private by default under the Git-ignored `reports` directory; keep a custom `--output-dir` private as well.
 
@@ -116,15 +167,18 @@ The evidence bundle clips long cells with an explicit omission marker, combines 
 
 | Function | Parameters | Returns |
 | --- | --- | --- |
-| `fetch_assignment_snapshot(repo, pr)` | `repo`: `owner/name`; `pr`: selected GitHub PR dict | `AssignmentSnapshot` with the PR head SHA, notebook, changed paths, and branch; raises on an unavailable or invalid notebook. |
-| `run_notebook(notebook)` | `notebook`: fetched Assignment 1 notebook dict | Trusted executed notebook dict or `None`, plus an execution note or `None`. Requires Docker. |
+| `fetch_assignment_snapshot(repo, pr)` | `repo`: `owner/name`; `pr`: selected GitHub PR dict | `AssignmentSnapshot` with the PR head SHA, notebook, changed paths, branch, and eligible text files; raises on unavailable submission data. |
+| `fetch_text_files(head_repo, sha, api)` | `head_repo`: PR head repository; `sha`: selected commit; `api`: GitHub API callback | Bounded, non-secret `.txt` file bytes keyed by repository-relative path; raises when the tree or an eligible blob cannot be verified. |
+| `course_gateway_key()` | No parameters | Course gateway key from the environment or `05_src/.secrets`, or `None`. |
+| `prepare_container(key=None)` | `key`: resolved facilitator OpenAI key | Setup issue or `None`; builds the course image and checks OpenAI service access. |
+| `run_notebook(notebook, key=None, text_files=None, gateway_key=None)` | `notebook`: fetched Assignment 1 notebook dict; `key`: resolved host credential; `text_files`: bounded PR text inputs; `gateway_key`: optional course gateway credential | Trusted executed notebook dict or `None`, plus an execution note or `None`. Requires Docker. |
 | `assess(notebook, executed=None, blocked=None)` | `notebook`: submitted notebook dict; `executed`: trusted run dict; `blocked`: execution block or `None` | Eight `Criterion` rows containing 39 `Part` records and 100 available points. |
 | `build_evidence(notebook, executed, blocked, *, secrets=(), student_name="")` | `notebook`: submitted notebook dict; `executed`: trusted run dict or `None`; `blocked`: evaluator block or `None`; `secrets`: known credential strings; `student_name`: name to remove | `EvidenceBundle`; raises `EvidenceLimit` when complete evidence exceeds the request bound. |
 | `rubric_specs(criteria)` | `criteria`: tuple of existing `Criterion` rows | Stable `PartSpec` IDs, labels, and point caps; no first-pass marks. |
-| `judge_review(bundle, specs, *, client=None, model=None)` | `bundle`: redacted evidence; `specs`: rubric parts; `client`: optional OpenAI client; `model`: optional override | `JudgeReview` with one `Judgment` per part or an `issue`. |
-| `composite_review(criteria, independent, bundle, *, client=None, model=None, secrets=(), student_name="")` | `criteria`: non-AI rows; `independent`: independent judge result; `bundle`: redacted evidence; `client`: optional OpenAI client; `model`: optional override; `secrets`: credentials to remove; `student_name`: name to remove | `CompositeReview` with a proposed judgment per part, learner notes, or an `issue`. |
+| `judge_review(bundle, specs, *, client=None, model=None, api_key=None)` | `bundle`: redacted evidence; `specs`: rubric parts; `client`: optional OpenAI client; `model`: optional override; `api_key`: resolved host credential | `JudgeReview` with one `Judgment` per part or an `issue`. |
+| `composite_review(criteria, independent, bundle, *, client=None, model=None, secrets=(), student_name="", api_key=None)` | `criteria`: non-AI rows; `independent`: independent judge result; `bundle`: redacted evidence; `client`: optional OpenAI client; `model`: optional override; `secrets`: credentials to remove; `student_name`: name to remove; `api_key`: resolved host credential | `CompositeReview` with a proposed judgment per part, learner notes, or an `issue`. |
 | `reconcile(criteria, review, bundle, composite=None)` | `criteria`: first-pass rows; `review`: independent judge result; `bundle`: evidence used for citation validation; `composite`: optional composite result | `Reconciliation` with proposed rows and per-part `Decision` records. |
-| `write_assignment_report(path, student, result, snapshot, criteria, execution_note, substitutions=None, second_pass=None)` | `path`: destination Markdown file; `student` and `result`: submission records; `snapshot`: selected PR or `None`; `criteria`: reconciled rows or `None`; `execution_note`: execution issue; `substitutions`: assigned PDF replacements; `second_pass`: reconciliation | Writes one private draft report; returns `None`. |
+| `write_assignment_report(path, student, result, snapshot, criteria, execution_note, substitutions=None, second_pass=None, key=None, gateway_key=None)` | `path`: destination Markdown file; `student` and `result`: submission records; `snapshot`: selected PR or `None`; `criteria`: reconciled rows or `None`; `execution_note`: execution issue; `substitutions`: assigned PDF replacements; `second_pass`: reconciliation; `key` and `gateway_key`: credentials to redact | Writes one private draft report; returns `None`. |
 
 `review.py` uses `Student` for validated input, `Result` for PR discovery status, and `AssignmentSnapshot` for the selected commit. `EvidenceBundle.entries` contains `EvidenceEntry(kind, cell, text)` items. `kind` is `code`, `markdown`, `output`, `error`, or trusted `reference`; `reference` uses cell 0. `Part(label, available, earned, evidence, pending=False, pending_reason=None)` records each non-AI rubric subpoint within a `Criterion`. `pending_reason` is `blocked` when required execution evidence was unavailable, `inconclusive` when the first-pass check cannot determine the result, and `None` otherwise. `JudgeReview.judgments` contains `Judgment(part_id, points, status, evidence, reason)` items, where `evidence` is a tuple of `Citation(kind, cell, excerpt)`. `CompositeReview.judgments` contains `CompositeJudgment(part_id, points, status, evidence, reason, review_needed)` items. Its learner notes contain `FeedbackNote(part_id, text, evidence)`. `Reconciliation.criteria` holds the draft rows and `decisions` holds all three scores, reasons, and review flags. These records are immutable.
 
