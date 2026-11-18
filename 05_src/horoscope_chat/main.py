@@ -15,7 +15,7 @@ load_dotenv(".secrets")
 
 client = OpenAI()
 
-open_ai_model = os.getenv("OPENAI_MODEL", "gpt-40-mini")
+open_ai_model = os.getenv("OPENAI_MODEL", "gpt-4")
 
 tools = [
     {
